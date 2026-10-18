@@ -1,7 +1,7 @@
 interface:
   display_name: "SCNet hashcat"
-  short_description: "Distributed hashcat password recovery on SCNet DCU clusters"
-  default_prompt: "Use $scnet-hashcat to run distributed hashcat jobs on the SCNet cluster."
+  short_description: "Run hashcat recovery workloads on SCNet compute nodes"
+  default_prompt: "Use $scnet-hashcat to plan and run an authorized offline recovery workload on SCNet, checking resources and collected rank results."
 
 policy:
   allow_implicit_invocation: true

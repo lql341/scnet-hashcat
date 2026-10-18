@@ -1,39 +1,39 @@
 name: Validate skill
-
 on:
   pull_request:
   push:
-    branches:
-      - main
-
+    branches: [main]
 jobs:
   validate:
-    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            python: '3.8'
+          - os: ubuntu-latest
+            python: '3.12'
+          - os: windows-latest
+            python: '3.12'
+    runs-on: ${{ matrix.os }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v7
-
-      - name: Validate shell syntax
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Offline Python behavior
         run: |
-          for script in scripts/hc scripts/remote/*.sh; do
-            bash -n "$script"
-          done
-
-      - name: Validate Python syntax
-        run: python3 -m py_compile scripts/*.py scripts/remote/*.py
-
-      - name: Validate version
+          python -m unittest discover -s tests -p 'test_*.py' -v
+          python tests/test-precheck.py
+          python scripts/validate.py
+      - name: Shell syntax and behavior
+        if: runner.os == 'Linux'
+        shell: bash
         run: |
-          grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$' VERSION
-          test "$(bash scripts/hc version)" = "hc $(cat VERSION)"
-
-      - name: Test precheck (clean and hostile hash files)
-        run: python3 tests/test-precheck.py
-
-      - name: Test driver argument parsing
-        run: bash tests/test-driver.sh
-
-      - name: Check repository hygiene
+          for script in scripts/hc scripts/remote/*.sh tests/*.sh; do bash -n "$script"; done
+          bash tests/test-driver.sh
+          bash tests/test-remote.sh
+      - name: Repository hygiene
+        shell: bash
         run: |
           git diff --check
           if git grep -nE 'BEGIN (RSA |OPENSSH |EC )?PRIVATE KEY|(^|[[:space:]])(export[[:space:]]+)?(API_KEY|ACCESS_KEY|SECRET_KEY|TOKEN|PASSWORD)[[:space:]]*=[[:space:]]*[^<[:space:]]+' -- ':!*.md' ':!.github/**'; then

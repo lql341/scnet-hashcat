@@ -1,255 +1,120 @@
 #!/usr/bin/env bash
-# hc-node.sh - per-node hashcat executor for scnet-hashcat.
-#
-# Runs as the Slurm job command. Fans out one hashcat process per allocated
-# node via srun; every rank gets its own potfile and cracked-output file.
-#
-# Cross-node parallelism uses FILE splitting (split -n l/N), never
-# --skip/--limit keyspace splitting: the mask engine on this cluster drops
-# mask tokens (see references/parallelization.md), and dictionary attacks are
-# unaffected by that defect.
-#
-# Fault tolerance: a rank that fails (no DCU, hashcat error) records the
-# failure in rank.<id>.kv and exits 0, so sibling ranks still finish. The
-# driver reports rank failures from summary.json.
-#
-# NOTE 1: `module` is a shell function. Never put it in a pipeline.
-# NOTE 2: compute nodes have no python3 - summaries are plain key=value
-#         files, and summary.json is assembled with shell only.
-
-set -u
-
+# One coordinator splits once, then launches one rank per allocated node.
+set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=/dev/null
 source "$HERE/hc-common.sh"
-
-usage() {
-  cat <<'EOF'
-Usage: hc-node.sh --hashes FILE --attack 0|1|3 [--dict FILE] [--rules FILE]
-                  [--mask MASK] [--nodes N] [--module NAME] [--modulefiles DIR]
-                  [--outdir DIR] [--extra-args "..."]
-EOF
-}
-
-HASHES=""
-DICT=""
-RULES=""
-MASK=""
-ATTACK=""
-MODE="0"
-NODES="${SLURM_JOB_NUM_NODES:-1}"
-MODULE="hashcat/7.1.2-dtk"
-MODULEFILES="${SCNET_HASHCAT_MODULEFILES:-/public/home/luql/modulefiles}"
-OUTDIR="results"
-EXTRA_ARGS=""
-
+ORIGINAL=("$@")
+HASHES= DICT= RULES= MASK= MODULE= MODULEFILES= OUTDIR= ATTACK=0 MODE=0 NODES=1 EXPECTED=1 RANK_MODE=0
+EXTRA=()
 while [ $# -gt 0 ]; do
   case "$1" in
-    --hashes) HASHES="$2"; shift 2 ;;
-    --dict) DICT="$2"; shift 2 ;;
-    --rules) RULES="$2"; shift 2 ;;
-    --mask) MASK="$2"; shift 2 ;;
-    --attack) ATTACK="$2"; shift 2 ;;
-    --mode) MODE="$2"; shift 2 ;;
-    --nodes) NODES="$2"; shift 2 ;;
-    --module) MODULE="$2"; shift 2 ;;
-    --modulefiles) MODULEFILES="$2"; shift 2 ;;
-    --outdir) OUTDIR="$2"; shift 2 ;;
-    --extra-args) EXTRA_ARGS="$2"; shift 2 ;;
-    -h|--help) usage; exit 0 ;;
-    *) echo "unknown argument: $1" >&2; usage >&2; exit 2 ;;
+    --rank) RANK_MODE=1; shift ;;
+    --hashes|--dict|--rules|--mask|--module|--modulefiles|--outdir|--attack|--mode|--nodes|--expected-devices|--extra)
+      [ $# -ge 2 ] || { echo "missing value: $1" >&2; exit 2; }
+      case "$1" in
+        --hashes) HASHES="$2" ;; --dict) DICT="$2" ;; --rules) RULES="$2" ;;
+        --mask) MASK="$2" ;; --module) MODULE="$2" ;; --modulefiles) MODULEFILES="$2" ;;
+        --outdir) OUTDIR="$2" ;; --attack) ATTACK="$2" ;; --mode) MODE="$2" ;;
+        --nodes) NODES="$2" ;; --expected-devices) EXPECTED="$2" ;; --extra) EXTRA+=("$2") ;;
+      esac
+      shift 2 ;;
+    *) echo "unknown argument: $1" >&2; exit 2 ;;
   esac
 done
-
-[ -n "$HASHES" ] || { echo "missing --hashes" >&2; exit 2; }
-if [ -z "$ATTACK" ]; then
-  if [ -n "$MASK" ]; then ATTACK=3; else ATTACK=0; fi
-fi
-if [ "$ATTACK" = "0" ] && [ -z "$DICT" ]; then
-  echo "dictionary attack requires --dict" >&2; exit 2
-fi
-if [ "$ATTACK" = "3" ] && [ -z "$MASK" ]; then
-  echo "mask attack requires --mask" >&2; exit 2
-fi
-
-LOG="$OUTDIR/hc-node.log"
-mkdir -p "$OUTDIR"
-exec > "$LOG" 2>&1
-
-log "hc-node start: attack=$ATTACK mode=$MODE nodes=$NODES module=$MODULE outdir=$OUTDIR"
-log "slurm: job=${SLURM_JOB_ID:-none} nodes=${SLURM_JOB_NUM_NODES:-1} procid=${SLURM_PROCID:-0} host=$(hostname)"
-
-# ---------------------------------------------------------------------------
-# rank script: everything a single node does
-# ---------------------------------------------------------------------------
-RANK_SCRIPT="$OUTDIR/rank.sh"
-cat > "$RANK_SCRIPT" <<EOF
-#!/usr/bin/env bash
-set -u
-RANK="\${SLURM_PROCID:-\$\$}"
-PARTS=$NODES
-OUTDIR_R="$OUTDIR"
-HASHES_R="$HASHES"
-DICT_R="$DICT"
-RULES_R="$RULES"
-MASK_R="$MASK"
-ATTACK_R=$ATTACK
-MODE_R=$MODE
-EXTRA_R="$EXTRA_ARGS"
-
-KV="\$OUTDIR_R/rank.\$RANK.kv"
-T0=\$(date +%s)
-
-write_kv() {
-  # write_kv hashcat_rc cracked elapsed error
-  cat > "\$KV" <<KVEOF
-rank=\$RANK
-host=\$(hostname)
-attack=\$ATTACK_R
-hashcat_rc=\$1
-cracked=\$2
-elapsed_s=\$3
-error=\$4
-KVEOF
-}
-
-fail() {
-  echo "FATAL: \$1" >&2
-  write_kv -1 0 0 "\$1"
-  exit 0
-}
-
-echo "== rank \$RANK on \$(hostname) =="
-
-module use "$MODULEFILES"
-module load "$MODULE"
-
-HC="\$(command -v hashcat)"
-[ -n "\$HC" ] || fail "hashcat not found after module load"
-echo "hashcat=\$HC"
-DEVICES=\$(\$HC -I 2>/dev/null | grep -c 'Backend Device ID')
-echo "dcu_devices=\$DEVICES"
-[ "\$DEVICES" -ge 1 ] || fail "no DCU device visible (HIP_VISIBLE_DEVICES=\$HIP_VISIBLE_DEVICES)"
-
-POTFILE="\$OUTDIR_R/pot.\$RANK"
-CRACKED="\$OUTDIR_R/cracked.\$RANK"
-RC=0
-
-case "\$ATTACK_R" in
-  0)
-    if [ "\$PARTS" -gt 1 ]; then
-      split -n l/\$PARTS --numeric-suffixes --suffix-length=3 \\
-        "\$DICT_R" "\$OUTDIR_R/dict.part."
-      MYDICT="\$OUTDIR_R/dict.part.\$(printf '%03d' \$RANK)"
-      echo "dict slice=\$MYDICT lines=\$(wc -l < "\$MYDICT")"
-    else
-      MYDICT="\$DICT_R"
-    fi
-    \$HC -a 0 -m "\$MODE_R" "\$HASHES_R" "\$MYDICT" \\
-      --potfile-path "\$POTFILE" -o "\$CRACKED" --outfile-format 1 \\
-      \$EXTRA_R
-    RC=\$?
-    ;;
-  1)
-    if [ "\$PARTS" -gt 1 ]; then
-      split -n l/\$PARTS --numeric-suffixes --suffix-length=3 \\
-        "\$RULES_R" "\$OUTDIR_R/rules.part."
-      MYRULES="\$OUTDIR_R/rules.part.\$(printf '%03d' \$RANK)"
-    else
-      MYRULES="\$RULES_R"
-    fi
-    \$HC -a 0 -m "\$MODE_R" "\$HASHES_R" "\$DICT_R" -r "\$MYRULES" \\
-      --potfile-path "\$POTFILE" -o "\$CRACKED" --outfile-format 1 \\
-      \$EXTRA_R
-    RC=\$?
-    ;;
-  3)
-    if [ "\$RANK" != "0" ]; then
-      echo "mask attack on multi-node: rank \$RANK skips (mask keyspace splitting is unreliable on this cluster)"
-      write_kv 0 0 0 ""
-      exit 0
-    fi
-    \$HC -a 3 -m "\$MODE_R" "\$HASHES_R" "\$MASK_R" \\
-      --potfile-path "\$POTFILE" -o "\$CRACKED" --outfile-format 1 \\
-      \$EXTRA_R
-    RC=\$?
-    ;;
+[[ "$NODES" =~ ^[1-9][0-9]*$ && "$MODE" =~ ^[0-9]+$ && "$EXPECTED" =~ ^[1-9][0-9]*$ ]] || exit 2
+[ -n "$OUTDIR" ] && [ -f "$HASHES" ] && [ -n "$MODULE" ] || exit 2
+case "$ATTACK" in
+  0) [ -f "$DICT" ] || exit 2 ;;
+  1) [ -f "$DICT" ] && [ -f "$RULES" ] || exit 2 ;;
+  3) [ -n "$MASK" ] && [ "$NODES" = 1 ] || exit 2 ;;
+  *) exit 2 ;;
 esac
+mkdir -p "$OUTDIR" || exit 1
 
-CRACKED_N=0
-[ -f "\$POTFILE" ] && CRACKED_N=\$(grep -c . "\$POTFILE" || true)
-ERR=""
-# hashcat exit codes: 0 all cracked, 1 exhausted (normal), 2 aborted, >=3 error
-[ \$RC -ge 3 ] && ERR="hashcat exited \$RC"
-[ \$RC -eq 2 ] && ERR="hashcat aborted (rc=2)"
-write_kv "\$RC" "\$CRACKED_N" "\$((\$(date +%s) - T0))" "\$ERR"
-echo "rank \$RANK done rc=\$RC cracked=\$CRACKED_N elapsed=\$((\$(date +%s) - T0))s err=\$ERR"
-exit 0
-EOF
-chmod +x "$RANK_SCRIPT"
+if [ "$RANK_MODE" = 1 ]; then
+  RANK="${SLURM_PROCID:-0}"
+  exec > "$OUTDIR/rank.$RANK.log" 2>&1
+  T0=$(date +%s)
+  RC=-1 ERROR= CRACKED=0
+  finish() {
+    if [ "$RC" = -1 ] && [ -z "$ERROR" ]; then ERROR='rank interrupted before hashcat finished'; fi
+    local tmp="$OUTDIR/rank.$RANK.kv.tmp"
+    printf 'rank=%s\nhost=%s\nattack=%s\nhashcat_rc=%s\ncracked=%s\nelapsed_s=%s\nerror=%s\n' \
+      "$RANK" "$(hostname)" "$ATTACK" "$RC" "$CRACKED" "$(( $(date +%s) - T0 ))" "$ERROR" > "$tmp"
+    mv "$tmp" "$OUTDIR/rank.$RANK.kv"
+  }
+  trap finish EXIT
+  fail() { ERROR="$1"; echo "$ERROR" >&2; exit 1; }
+  log "rank=$RANK allocated_devices=${HIP_VISIBLE_DEVICES:-unset}"
+  MYDICT="$DICT" MYRULES="$RULES"
+  if [ "$NODES" -gt 1 ]; then
+    PART="$OUTDIR/part.$(printf '%05d' "$RANK")"
+    if [ "$ATTACK" = 1 ]; then MYRULES="$PART"; else MYDICT="$PART"; fi
+    [ -f "$PART" ] || fail 'slice missing'
+    if [ ! -s "$PART" ]; then RC=1; log 'empty slice: no work'; exit 0; fi
+  fi
+  type module >/dev/null 2>&1 || fail 'module function unavailable; use a login shell'
+  if [ -n "$MODULEFILES" ]; then module use "$MODULEFILES" || fail 'module use failed'; fi
+  module load "$MODULE" || fail 'module load failed'
+  HC=$(command -v hashcat) || fail 'hashcat not found after module load'
+  "$HC" -I > "$OUTDIR/devices.$RANK.txt" 2>&1 || fail 'device enumeration failed'
+  DEVICES=$(grep -c 'Backend Device ID' "$OUTDIR/devices.$RANK.txt" || true)
+  [ "$DEVICES" -ge "$EXPECTED" ] || fail 'fewer devices visible than requested'
+  ARGS=(-a 0 -m "$MODE" "$HASHES")
+  if [ "$ATTACK" = 3 ]; then ARGS=(-a 3 -m "$MODE" "$HASHES" "$MASK"); else ARGS+=("$MYDICT"); fi
+  [ -z "$MYRULES" ] || ARGS+=(-r "$MYRULES")
+  # Bash 4.2 on CentOS treats an empty array expansion as unbound with set -u.
+  if [ "${#EXTRA[@]}" -gt 0 ]; then ARGS+=("${EXTRA[@]}"); fi
+  "$HC" "${ARGS[@]}" --potfile-path "$OUTDIR/pot.$RANK" -o "$OUTDIR/cracked.$RANK" \
+    --outfile-format 1 --session "hc-${SLURM_JOB_ID:-local}-$RANK" --restore-disable --logfile-disable
+  RC=$?
+  [ ! -f "$OUTDIR/pot.$RANK" ] || CRACKED=$(grep -c . "$OUTDIR/pot.$RANK" || true)
+  hashcat_rc_ok "$RC" || fail "hashcat exited $RC"
+  exit 0
+fi
 
+exec > "$OUTDIR/hc-node.log" 2>&1
+# Require fresh result paths so old rank records cannot masquerade as this run.
+if compgen -G "$OUTDIR/rank.*.kv" >/dev/null; then log 'existing rank records; refusing reuse'; exit 1; fi
 if [ "$NODES" -gt 1 ]; then
-  log "fanning out $NODES ranks via srun"
-  # -K0: do not terminate sibling ranks when one rank exits non-zero
-  srun -K0 -N "$NODES" -n "$NODES" --ntasks-per-node=1 bash "$RANK_SCRIPT"
+  INPUT="$DICT"
+  [ "$ATTACK" != 1 ] || INPUT="$RULES"
+  split -n "l/$NODES" --numeric-suffixes --suffix-length=5 "$INPUT" "$OUTDIR/part." || exit 1
+  srun -K0 -N "$NODES" -n "$NODES" --ntasks-per-node=1 bash -l "$HERE/hc-node.sh" --rank "${ORIGINAL[@]}"
   FAN_RC=$?
 else
-  bash "$RANK_SCRIPT"
+  bash -l "$HERE/hc-node.sh" --rank "${ORIGINAL[@]}"
   FAN_RC=$?
 fi
 
-log "fan-out rc=$FAN_RC"
-
-# ---------------------------------------------------------------------------
-# assemble summary.json with shell only (no python3 on compute nodes)
-# ---------------------------------------------------------------------------
-TOTAL_CRACKED=0
-MAX_ELAPSED=0
-RANKS_FAILED=0
-RANKS_JSON=""
-for kv in "$OUTDIR"/rank.*.kv; do
-  [ -f "$kv" ] || continue
-  rank=""; host=""; attack=""; hc_rc=""; cracked=""; elapsed=""; error=""
-  while IFS='=' read -r key value; do
-    case "$key" in
-      rank) rank="$value" ;;
-      host) host="$value" ;;
-      attack) attack="$value" ;;
-      hashcat_rc) hc_rc="$value" ;;
-      cracked) cracked="$value" ;;
-      elapsed_s) elapsed="$value" ;;
-      error) error="$value" ;;
-    esac
-  done < "$kv"
-  [ -n "$cracked" ] || cracked=0
-  [ -n "$elapsed" ] || elapsed=0
-  TOTAL_CRACKED=$((TOTAL_CRACKED + cracked))
-  [ "$elapsed" -gt "$MAX_ELAPSED" ] && MAX_ELAPSED="$elapsed"
-  [ -n "$error" ] && RANKS_FAILED=$((RANKS_FAILED + 1))
-  # minimal JSON string escaping for the error field
-  error="${error//\\/\\\\}"
-  error="${error//\"/\\\"}"
-  entry="{\"rank\": ${rank:-0}, \"host\": \"$host\", \"attack\": ${attack:-0}, \"hashcat_rc\": ${hc_rc:--1}, \"cracked\": $cracked, \"elapsed_s\": $elapsed, \"error\": \"$error\"}"
-  if [ -n "$RANKS_JSON" ]; then RANKS_JSON="$RANKS_JSON, $entry"; else RANKS_JSON="$entry"; fi
-done
-
-cat > "$OUTDIR/summary.json" <<JSON
-{
-  "ranks": [$RANKS_JSON],
-  "total_cracked": $TOTAL_CRACKED,
-  "max_elapsed_s": $MAX_ELAPSED,
-  "ranks_total": $(ls "$OUTDIR"/rank.*.kv 2>/dev/null | wc -l),
-  "ranks_failed": $RANKS_FAILED
+json_escape() {
+  local value="$1"
+  value="${value//\\/\\\\}"; value="${value//\"/\\\"}"
+  value="${value//$'\n'/\\n}"; value="${value//$'\r'/\\r}"; value="${value//$'\t'/\\t}"
+  printf '%s' "$value"
 }
-JSON
-
-log "summary: total_cracked=$TOTAL_CRACKED max_elapsed_s=$MAX_ELAPSED ranks_failed=$RANKS_FAILED"
+FAILED=0 TOTAL=0 MAX=0 SEP=
+printf '{"ranks":[' > "$OUTDIR/summary.json.tmp"
+for ((i=0; i<NODES; i++)); do
+  rc=-1 cracked=0 elapsed=0 host= error='missing rank record'
+  kv="$OUTDIR/rank.$i.kv"
+  if [ -f "$kv" ]; then
+    error=
+    while IFS='=' read -r key value; do
+      case "$key" in
+        host) host="$value" ;; hashcat_rc) rc="$value" ;; cracked) cracked="$value" ;;
+        elapsed_s) elapsed="$value" ;; error) error="$value" ;;
+      esac
+    done < "$kv"
+  fi
+  if ! hashcat_rc_ok "$rc" || [ -n "$error" ]; then FAILED=$((FAILED+1)); fi
+  TOTAL=$((TOTAL+cracked)); [ "$elapsed" -le "$MAX" ] || MAX="$elapsed"
+  printf '%s{"rank":%s,"host":"%s","hashcat_rc":%s,"cracked":%s,"elapsed_s":%s,"error":"%s"}' \
+    "$SEP" "$i" "$(json_escape "$host")" "$rc" "$cracked" "$elapsed" "$(json_escape "$error")" >> "$OUTDIR/summary.json.tmp"
+  SEP=,
+done
+printf '],"ranks_total":%s,"ranks_failed":%s,"total_cracked":%s,"max_elapsed_s":%s,"fanout_rc":%s}\n' \
+  "$NODES" "$FAILED" "$TOTAL" "$MAX" "$FAN_RC" >> "$OUTDIR/summary.json.tmp"
+mv "$OUTDIR/summary.json.tmp" "$OUTDIR/summary.json"
 cat "$OUTDIR/summary.json"
-
-# Fan-out itself failed (srun could not start)? Surface it, but rank-level
-# failures are already recorded above and are not fatal here.
-if [ "$FAN_RC" -ne 0 ] && [ "$RANKS_FAILED" -eq 0 ]; then
-  log "WARNING: srun returned $FAN_RC but no rank recorded a failure"
-fi
-
-exit 0
+[ "$FAN_RC" = 0 ] && [ "$FAILED" = 0 ]

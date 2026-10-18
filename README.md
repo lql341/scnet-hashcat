@@ -1,75 +1,111 @@
 # scnet-hashcat
 
-Run distributed [hashcat](https://hashcat.net) password-recovery jobs on
-[SCNet](https://www.scnet.cn) HPC clusters (Hygon DCU / DTK), single or
-multi-node, with an automatic CVE precheck and result collection.
+English | [中文](README_CN.md)
 
-A general-purpose agent skill: the driver is plain bash + Python 3 standard
-library, the cluster layer is a self-contained OpenAPI client, and there is
-no dependency on any specific agent platform.
+Current release: 0.2.0
 
-## Features
+Run [hashcat](https://hashcat.net/hashcat/) offline password-recovery workloads on
+[SCNet](https://www.scnet.cn) compute nodes. This application skill follows
+[scnet-hpc](https://github.com/lql341/scnet-hpc) conventions: profiles, OpenAPI,
+shared credential discovery, bounded jobs and evidence-based status reporting.
 
-- **One command, full pipeline**: precheck hash file → upload inputs →
-  submit a multi-node Slurm job (one hashcat per node, all DCUs) → wait →
-  merge potfiles → report.
-- **Cross-node parallelism by file splitting**, immune to this cluster's
-  mask-engine defect (see `references/parallelization.md`).
-- **CVE guard**: rejects crafted krb5/PKZIP hash-file shapes before hashcat
-  ever reads them (CVE-2026-42483, CVSS 9.8; CVE-2026-42484;
-  CVE-2026-68768).
-- **Self-contained**: `scripts/scnet_lite.py` is a trimmed SCNet OpenAPI
-  client (subset of [scnet-hpc](https://github.com/lql341/scnet-hpc), MIT);
-  credentials are shared with scnet-hpc when present.
+## One-sentence agent installation
 
-## Install
+Paste this into Codex:
 
-Copy the repo anywhere and add it to your agent's skill directory, or just
-run it directly:
+> Use `$skill-installer` to install `scnet-hashcat` from the root of GitHub repository `lql341/scnet-hashcat` (path `.`, ref `main`), name it `scnet-hashcat`, do not overwrite an existing destination, then run `scripts/hc.py --help` with the available Python 3 interpreter from the installed directory and report the absolute installation path; do not configure credentials or submit jobs during installation.
+
+The skill is available on the next turn. This installs the **local skill**, not a
+remote hashcat binary. No SCNet credentials, local GPU or local hashcat installation
+are needed to install or produce an offline plan. Codex installer commands for
+Linux/macOS and Windows, manual installation for other agents, verification and
+update behavior are in [installation](references/installation.md).
+
+## Prerequisites
+
+| Stage | Required |
+| --- | --- |
+| Install, help, input checks, offline dry-run | Local Python 3.8+, standard library; GitHub download access for installation. Git is only needed for the clone route. |
+| Read live resources with doctor | An SCNet account enabled for the selected region, platform username + HPC OpenAPI AK/SK, and access to SCNet API services. |
+| Run a recovery job | Queue permission, sufficient balance/quota, a compatible hashcat module already deployed for the account, an existing modulefiles directory, and shared writable remote storage. Compute nodes need Bash, Slurm/srun, GNU split and the correct DCU/DTK runtime. |
+| Supply a workload | Authorized offline hashes in the selected hashcat format, an explicit hash mode (`--mode`, default 0/MD5), and a dictionary or a single-node mask; rules are optional. |
+
+Local Linux/macOS can also use `scripts/hc`; Windows can call `python scripts/hc.py`
+without Bash/WSL. Remote Python 3 and compute-node Internet access are not required.
+`scnet-hpc` is recommended for first-time credential setup or software deployment,
+but is not a runtime dependency when credentials and the module already exist.
+AK/SK does not activate region resources by itself. See the
+[first-run walkthrough](references/quickstart.md) for where to obtain credentials,
+module readiness, exact commands and troubleshooting.
+
+## Ask the agent to use it
+
+First, check readiness without submitting:
+
+> Use `$scnet-hashcat` to check the installed version and Kunshan region 11250 resources, list any missing prerequisites, and prepare an offline plan with the bundled synthetic hashes and dictionary; do not submit a job, and if credentials are missing give me the command to enter them in my own terminal.
+
+Once credentials and the remote module are ready, explicitly authorize a small test:
+
+> Use `$scnet-hashcat` to run the bundled synthetic MD5 dictionary test in Kunshan region 11250, queue kshdnormal, using one node, one DCU and a three-minute walltime; wait up to 15 minutes, collect the results and check that 5 of 7 hashes are recovered, reporting scheduler state and rank completeness.
+
+For your data, specify local input paths, hash mode, region, queue, node/DCU budget
+and walltime. More prompts and the complete CLI lifecycle are in
+[quickstart](references/quickstart.md).
+
+## Configure and run
+
+Reuse credentials configured by scnet-hpc: environment variables or its supported
+OS credential store (`scnet-hpc-openapi`). No secrets belong in `config.json`.
+The application works independently when the three OpenAPI environment variables
+are injected. See the [quickstart](references/quickstart.md). All relative commands below run from the installed skill directory or clone; the agent should resolve that directory to an absolute path.
 
 ```bash
-git clone https://github.com/lql341/scnet-hashcat
-cd scnet-hashcat
+python3 scripts/hc.py doctor --region 11250
+python3 scripts/hc.py crack --hashes hashes.txt --dict dict.txt --dry-run
+python3 scripts/hc.py crack --hashes hashes.txt --dict dict.txt --region 11250 --wait
+python3 scripts/hc.py status <job-id> --region 11250
+python3 scripts/hc.py collect <job-id> --region 11250 --out ./results
 ```
 
-Works with Claude Code, Codex, WorkBuddy, or any agent that can execute
-shell commands.
+Defaults: Kunshan profile `kseshell`, 1 node, 1 DCU, 8 total CPUs and 10 minutes.
+Explicit options override defaults. Queue/quotas are queried before upload and
+submission. Static profile capacity is not current free capacity. An installed
+hashcat module is an account prerequisite, not installed by this skill.
 
-## Usage
+Dictionary/rules workloads support multiple nodes. Files are split once before
+fan-out; rank logs and potfiles stay separate. Masks require one node. Only
+accounting-confirmed completion plus all expected successful ranks returns success.
+`--wait-timeout` bounds local waiting; timing out leaves the remote job running.
+Use `cancel` to stop it explicitly.
+
+Input checks are conservative and may reject legitimate long fields. They do not
+establish CVE immunity. PKZIP structural validation is unsupported and rejected;
+see [input-check limits](references/cve-precheck.md). Small `--keyspace` values
+are normal base-loop semantics, not evidence of dropped mask tokens.
+
+## Structure and validation
+
+```text
+VERSION / CHANGELOG.md   Application version and history
+SKILL.md / agents/      Agent instructions and UI metadata
+clusters/               Account-neutral application profiles
+scripts/hc.py           Portable local application driver
+scripts/scnet_lite.py   Focused SCNet OpenAPI adapter
+scripts/remote/         Compute-node execution and input checks
+references/             English instructions and *_CN.md translations
+tests/                  Offline behavioral regressions and synthetic fixtures
+```
 
 ```bash
-scripts/hc doctor
-scripts/hc crack --hashes hashes.txt --dict rockyou.txt --nodes 4 --wait
-scripts/hc status <job-id>
-scripts/hc collect <job-id> --out ./results
+python3 -m unittest discover -s tests -p 'test_*.py'
+python3 tests/test-precheck.py
+bash tests/test-driver.sh
+bash tests/test-remote.sh
 ```
 
-See [references/quickstart-en.md](references/quickstart-en.md) for the full
-walkthrough and
-[references/quickstart.md](references/quickstart.md) for the Chinese version.
+Kunshan validation and its limits are recorded in
+[the test report](references/validation.md). Architecture and pinned vendored
+sources are described in [architecture](references/architecture.md).
 
-## Requirements
-
-- Python 3.8+ (driver machine), standard library only.
-- SCNet OpenAPI credentials (env vars or `~/.config/scnet-hashcat/config.json`).
-- On-cluster: a hashcat DCU build exposed as a module (default
-  `hashcat/7.1.2-dtk` in a personal modulefiles directory).
-
-## Layout
-
-```
-scripts/
-  hc                     local driver (doctor/precheck/crack/status/collect/split)
-  scnet_lite.py          self-contained SCNet OpenAPI client
-  remote/
-    hc-node.sh           per-node executor (srun fan-out, file splitting)
-    hc-precheck.py       hash-file CVE guard
-    hc-common.sh         shared remote helpers
-references/              quickstart (en/zh), parallelization, cve-precheck, pitfalls
-agents/openai.yaml       OpenAI/Codex interface metadata
-```
-
-## License
-
-MIT. The OpenAPI client subset is derived from
-[lql341/scnet-hpc](https://github.com/lql341/scnet-hpc) (MIT).
+MIT. The OpenAPI adapter and shared credential/version helpers derive from
+[lql341/scnet-hpc](https://github.com/lql341/scnet-hpc), also MIT.
