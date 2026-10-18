@@ -7,6 +7,13 @@ OpenAPI/SSH and general workload lifecycle. scnet-hashcat is an application skil
 input roles, hashcat arguments, splitting, rank execution and recovery artifacts.
 Do not duplicate SSH setup or install a second credential store for this application.
 
+scnet-hashcat also serves as the operational reference for
+[scnet-app](https://github.com/lql341/scnet-app), which standardizes authoring new
+SCNet application skills. New scaffolds call scnet-hpc's CLI; this application's
+existing distributed driver and vendored adapter are separate implementations.
+See the [reference mapping](https://github.com/lql341/scnet-app/blob/main/references/hashcat-reference.md)
+for reusable behavior and current contract differences.
+
 The application adapter currently vendors a focused OpenAPI implementation rather
 than importing an independently installed skill at runtime. This keeps installation
 self-contained but creates a maintenance obligation: review upstream changes to

@@ -9,6 +9,12 @@ Run [hashcat](https://hashcat.net/hashcat/) offline password-recovery workloads 
 [scnet-hpc](https://github.com/lql341/scnet-hpc) conventions: profiles, OpenAPI,
 shared credential discovery, bounded jobs and evidence-based status reporting.
 
+This is the reference application for
+[scnet-app](https://github.com/lql341/scnet-app), the meta-skill for SCNet resource
+binding, Slurm scheduling and cluster packaging. See its
+[benchmark mapping](https://github.com/lql341/scnet-app/blob/main/references/hashcat-reference.md)
+before applying these patterns to another scientific application.
+
 ## One-sentence agent installation
 
 Paste this into Codex:

@@ -6,6 +6,11 @@ scnet-hpc 负责基础设施：凭证配置、集群发现、OpenAPI/SSH 和通�
 scnet-hashcat 负责应用：输入角色、hashcat 参数、切分、rank 执行和恢复产物。
 应用不另建 SSH 配置流程或第二套凭据库。
 
+scnet-hashcat 同时作为 [scnet-app](https://github.com/lql341/scnet-app) 的运行标杆，
+后者规范新 SCNet 应用 skill 的编写。新脚手架调用 scnet-hpc CLI；本应用现有的
+分布式驱动和内置适配层属于不同实现。可复用行为及当前规范差异见
+[标杆对照](https://github.com/lql341/scnet-app/blob/main/references/hashcat-reference_CN.md)。
+
 当前应用适配层内置精简 OpenAPI 实现，不在运行时导入另一份已安装 skill。
 这样可以独立安装，但必须跟进上游认证、文件传输、作业记账变化，不能声称 SDK
 自动保持一致。`scripts/vendor-manifest.json` 记录来源提交和辅助模块校验值。

@@ -8,6 +8,10 @@
 离线密码恢复任务。应用 skill 与 [scnet-hpc](https://github.com/lql341/scnet-hpc)
 统一 profile、OpenAPI、凭证读取、有限资源作业和结果状态约定。
 
+本仓库作为 [scnet-app](https://github.com/lql341/scnet-app) 的标杆应用，
+为后续科学应用的 SCNet 算力绑定、Slurm 调度和集群打包提供运行参考。
+采用这些做法前，请阅读[标杆对照](https://github.com/lql341/scnet-app/blob/main/references/hashcat-reference_CN.md)。
+
 ## 一句话让 agent 安装
 
 将这句话发给 Codex：
