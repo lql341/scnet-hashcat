@@ -12,6 +12,9 @@ available; this skill also runs independently with environment credentials.
 
 ## First use and selection
 
+- Installation requests: read [references/installation.md](references/installation.md)
+  or [references/installation_CN.md](references/installation_CN.md); distinguish local
+  skill installation, credential setup, and remote module deployment.
 - Default repository instructions are English; respond in the user's language.
   Start with [references/quickstart.md](references/quickstart.md), or
   [references/quickstart_CN.md](references/quickstart_CN.md) for Chinese.

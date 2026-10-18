@@ -2,6 +2,8 @@
 
 ## 0.2.0 (2026-10-18)
 
+- Document one-sentence agent installation, platform-specific installer commands,
+  staged prerequisites, credential setup, module readiness and first-run usage.
 - Align application layout, English/Chinese docs, XDG region selection and secure
   credential discovery with scnet-hpc; record pinned vendor provenance.
 - Add a portable Python driver, retaining `scripts/hc` as a Bash wrapper.

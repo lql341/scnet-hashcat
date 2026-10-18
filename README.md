@@ -9,30 +9,55 @@ Run [hashcat](https://hashcat.net/hashcat/) offline password-recovery workloads 
 [scnet-hpc](https://github.com/lql341/scnet-hpc) conventions: profiles, OpenAPI,
 shared credential discovery, bounded jobs and evidence-based status reporting.
 
-## Install
+## One-sentence agent installation
 
-Paste into your agent:
+Paste this into Codex:
 
-> Install the `scnet-hashcat` skill from the root of GitHub repository `lql341/scnet-hashcat` (path `.`), name it `scnet-hashcat`, do not overwrite an existing destination, then run `python3 scripts/hc.py --help` from the installed directory and report the installation path.
+> Use `$skill-installer` to install `scnet-hashcat` from the root of GitHub repository `lql341/scnet-hashcat` (path `.`, ref `main`), name it `scnet-hashcat`, do not overwrite an existing destination, then run `scripts/hc.py --help` with the available Python 3 interpreter from the installed directory and report the absolute installation path; do not configure credentials or submit jobs during installation.
 
-Or run from a clone:
+The skill is available on the next turn. This installs the **local skill**, not a
+remote hashcat binary. No SCNet credentials, local GPU or local hashcat installation
+are needed to install or produce an offline plan. Codex installer commands for
+Linux/macOS and Windows, manual installation for other agents, verification and
+update behavior are in [installation](references/installation.md).
 
-```bash
-git clone https://github.com/lql341/scnet-hashcat.git
-cd scnet-hashcat
-python3 scripts/hc.py --help
-```
+## Prerequisites
 
-Local runtime: Python 3.8+, standard library only. Linux/macOS can use `scripts/hc`;
-Windows can call `python scripts/hc.py` without Bash/WSL. Remote execution requires
-Linux Bash, Slurm, GNU split and a hashcat module for the allocated DCUs.
+| Stage | Required |
+| --- | --- |
+| Install, help, input checks, offline dry-run | Local Python 3.8+, standard library; GitHub download access for installation. Git is only needed for the clone route. |
+| Read live resources with doctor | An SCNet account enabled for the selected region, platform username + HPC OpenAPI AK/SK, and access to SCNet API services. |
+| Run a recovery job | Queue permission, sufficient balance/quota, a compatible hashcat module already deployed for the account, an existing modulefiles directory, and shared writable remote storage. Compute nodes need Bash, Slurm/srun, GNU split and the correct DCU/DTK runtime. |
+| Supply a workload | Authorized offline hashes in the selected hashcat format, an explicit hash mode (`--mode`, default 0/MD5), and a dictionary or a single-node mask; rules are optional. |
+
+Local Linux/macOS can also use `scripts/hc`; Windows can call `python scripts/hc.py`
+without Bash/WSL. Remote Python 3 and compute-node Internet access are not required.
+`scnet-hpc` is recommended for first-time credential setup or software deployment,
+but is not a runtime dependency when credentials and the module already exist.
+AK/SK does not activate region resources by itself. See the
+[first-run walkthrough](references/quickstart.md) for where to obtain credentials,
+module readiness, exact commands and troubleshooting.
+
+## Ask the agent to use it
+
+First, check readiness without submitting:
+
+> Use `$scnet-hashcat` to check the installed version and Kunshan region 11250 resources, list any missing prerequisites, and prepare an offline plan with the bundled synthetic hashes and dictionary; do not submit a job, and if credentials are missing give me the command to enter them in my own terminal.
+
+Once credentials and the remote module are ready, explicitly authorize a small test:
+
+> Use `$scnet-hashcat` to run the bundled synthetic MD5 dictionary test in Kunshan region 11250, queue kshdnormal, using one node, one DCU and a three-minute walltime; wait up to 15 minutes, collect the results and check that 5 of 7 hashes are recovered, reporting scheduler state and rank completeness.
+
+For your data, specify local input paths, hash mode, region, queue, node/DCU budget
+and walltime. More prompts and the complete CLI lifecycle are in
+[quickstart](references/quickstart.md).
 
 ## Configure and run
 
 Reuse credentials configured by scnet-hpc: environment variables or its supported
 OS credential store (`scnet-hpc-openapi`). No secrets belong in `config.json`.
 The application works independently when the three OpenAPI environment variables
-are injected. See the [quickstart](references/quickstart.md).
+are injected. See the [quickstart](references/quickstart.md). All relative commands below run from the installed skill directory or clone; the agent should resolve that directory to an absolute path.
 
 ```bash
 python3 scripts/hc.py doctor --region 11250
