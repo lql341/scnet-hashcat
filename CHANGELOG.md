@@ -2,6 +2,8 @@
 
 ## 0.2.0 (2026-10-18)
 
+- Identify this application as scnet-app's operational benchmark, with bilingual
+  links explaining reusable patterns and infrastructure/contract differences.
 - Generalize public titles, prompts and examples to SCNet cluster environments.
 - Document one-sentence agent installation, platform-specific installer commands,
   staged prerequisites, credential setup, module readiness and first-run usage.
