@@ -2,6 +2,8 @@
 
 [English](installation.md) | 中文
 
+离线示例中的 `<region-id>` 请换成选定区域 ID。
+
 ## 安装的是什么
 
 本仓库根目录整体就是 `scnet-hashcat` skill，应一起保留 `SKILL.md`、`agents/`、
@@ -86,7 +88,7 @@ Windows 最后一条改用 `python` 或 `py -3`。
 ```bash
 python3 scripts/hc.py version
 python3 scripts/hc.py precheck --hashes tests/data/hashes.txt --mode 0
-python3 scripts/hc.py crack --hashes tests/data/hashes.txt --dict tests/data/dict.txt --mode 0 --region 11250 --nodes 1 --dcus-per-node 1 --walltime 00:03:00 --dry-run
+python3 scripts/hc.py crack --hashes tests/data/hashes.txt --dict tests/data/dict.txt --mode 0 --region "<region-id>" --nodes 1 --dcus-per-node 1 --walltime 00:03:00 --dry-run
 ```
 
 版本应与 `VERSION` 一致；自带哈希应通过预检；最后一条只打印本地计划，不认证、

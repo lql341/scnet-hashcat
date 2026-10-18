@@ -1,8 +1,10 @@
-# Kunshan validation
+# SCNet cluster environment validation
 
 English | [中文](validation_CN.md)
 
-Validated 2026-10-18 on the Kunshan SCNet region, `kshdnormal`, using the account's
+The recorded results apply only to the tested deployment, not all SCNet environments. Replace `<region-id>` with an authorized target when reproducing them.
+
+Validated 2026-10-18 in a selected SCNet cluster environment, using the account's
 existing `hashcat/7.1.2-dtk` module. Device evidence: HIP runtime, Device 66a1,
 16368 MB per DCU. All recovery inputs were synthetic; walltime was bounded to
 three minutes per job. No account hashes or external target data were used.
@@ -29,10 +31,10 @@ The vendor name/version alone does not establish CVE patch status.
 ## Reproduce within an authorized allocation
 
 ```bash
-python3 scripts/hc.py doctor --region 11250
-python3 scripts/hc.py crack --hashes tests/data/hashes.txt --dict tests/data/dict.txt --region 11250 --nodes 2 --dcus-per-node 1 --walltime 00:03:00 --wait
-python3 scripts/hc.py crack --hashes tests/data/rules-hashes.txt --dict tests/data/rules-dict.txt --rules tests/data/rules.txt --region 11250 --nodes 2 --dcus-per-node 1 --walltime 00:03:00 --wait
-python3 scripts/hc.py crack --hashes tests/data/mask-hashes.txt --mask '?d?d' --region 11250 --nodes 1 --dcus-per-node 1 --walltime 00:03:00 --wait
+python3 scripts/hc.py doctor --region "<region-id>"
+python3 scripts/hc.py crack --hashes tests/data/hashes.txt --dict tests/data/dict.txt --region "<region-id>" --nodes 2 --dcus-per-node 1 --walltime 00:03:00 --wait
+python3 scripts/hc.py crack --hashes tests/data/rules-hashes.txt --dict tests/data/rules-dict.txt --rules tests/data/rules.txt --region "<region-id>" --nodes 2 --dcus-per-node 1 --walltime 00:03:00 --wait
+python3 scripts/hc.py crack --hashes tests/data/mask-hashes.txt --mask '?d?d' --region "<region-id>" --nodes 1 --dcus-per-node 1 --walltime 00:03:00 --wait
 ```
 
 The rule fixtures cover `hello`, `HELLO`, `admin1`, and one intentionally absent

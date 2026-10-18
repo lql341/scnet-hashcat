@@ -2,6 +2,8 @@
 
 English | [中文](installation_CN.md)
 
+Replace `<region-id>` in the offline example with your selected region ID.
+
 ## What gets installed
 
 The entire repository root is the `scnet-hashcat` skill. Keep `SKILL.md`, `agents/`,
@@ -94,7 +96,7 @@ From the installed skill directory (Windows: substitute `python`):
 ```bash
 python3 scripts/hc.py version
 python3 scripts/hc.py precheck --hashes tests/data/hashes.txt --mode 0
-python3 scripts/hc.py crack --hashes tests/data/hashes.txt --dict tests/data/dict.txt --mode 0 --region 11250 --nodes 1 --dcus-per-node 1 --walltime 00:03:00 --dry-run
+python3 scripts/hc.py crack --hashes tests/data/hashes.txt --dict tests/data/dict.txt --mode 0 --region "<region-id>" --nodes 1 --dcus-per-node 1 --walltime 00:03:00 --dry-run
 ```
 
 The version must match `VERSION`; precheck must accept the bundled text hashes;

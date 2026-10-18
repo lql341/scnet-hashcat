@@ -5,7 +5,7 @@ English | [中文](README_CN.md)
 Current release: 0.2.0
 
 Run [hashcat](https://hashcat.net/hashcat/) offline password-recovery workloads on
-[SCNet](https://www.scnet.cn) compute nodes. This application skill follows
+[SCNet](https://www.scnet.cn) cluster environments. This application skill follows
 [scnet-hpc](https://github.com/lql341/scnet-hpc) conventions: profiles, OpenAPI,
 shared credential discovery, bounded jobs and evidence-based status reporting.
 
@@ -42,11 +42,11 @@ module readiness, exact commands and troubleshooting.
 
 First, check readiness without submitting:
 
-> Use `$scnet-hashcat` to check the installed version and Kunshan region 11250 resources, list any missing prerequisites, and prepare an offline plan with the bundled synthetic hashes and dictionary; do not submit a job, and if credentials are missing give me the command to enter them in my own terminal.
+> Use `$scnet-hashcat` to check the installed version and resources of my configured SCNet cluster environment, list any missing prerequisites, and prepare an offline plan with the bundled synthetic hashes and dictionary; do not submit a job, and if credentials are missing give me the command to enter them in my own terminal.
 
 Once credentials and the remote module are ready, explicitly authorize a small test:
 
-> Use `$scnet-hashcat` to run the bundled synthetic MD5 dictionary test in Kunshan region 11250, queue kshdnormal, using one node, one DCU and a three-minute walltime; wait up to 15 minutes, collect the results and check that 5 of 7 hashes are recovered, reporting scheduler state and rank completeness.
+> Use `$scnet-hashcat` to run the bundled synthetic MD5 dictionary test in my selected SCNet cluster environment and queue, using one node, one DCU and a three-minute walltime; wait up to 15 minutes, collect the results and check that 5 of 7 hashes are recovered, reporting scheduler state and rank completeness.
 
 For your data, specify local input paths, hash mode, region, queue, node/DCU budget
 and walltime. More prompts and the complete CLI lifecycle are in
@@ -57,17 +57,20 @@ and walltime. More prompts and the complete CLI lifecycle are in
 Reuse credentials configured by scnet-hpc: environment variables or its supported
 OS credential store (`scnet-hpc-openapi`). No secrets belong in `config.json`.
 The application works independently when the three OpenAPI environment variables
-are injected. See the [quickstart](references/quickstart.md). All relative commands below run from the installed skill directory or clone; the agent should resolve that directory to an absolute path.
+are injected. See the [quickstart](references/quickstart.md). Run relative commands
+from the installed skill directory or clone; the agent should resolve its absolute
+path. Replace `<region-id>` with your configured target region.
 
 ```bash
-python3 scripts/hc.py doctor --region 11250
+python3 scripts/hc.py doctor --region "<region-id>"
 python3 scripts/hc.py crack --hashes hashes.txt --dict dict.txt --dry-run
-python3 scripts/hc.py crack --hashes hashes.txt --dict dict.txt --region 11250 --wait
-python3 scripts/hc.py status <job-id> --region 11250
-python3 scripts/hc.py collect <job-id> --region 11250 --out ./results
+python3 scripts/hc.py crack --hashes hashes.txt --dict dict.txt --region "<region-id>" --wait
+python3 scripts/hc.py status <job-id> --region "<region-id>"
+python3 scripts/hc.py collect <job-id> --region "<region-id>" --out ./results
 ```
 
-Defaults: Kunshan profile `kseshell`, 1 node, 1 DCU, 8 total CPUs and 10 minutes.
+Resource defaults: 1 node, 1 DCU, 8 total CPUs and 10 minutes. Select the actual
+cluster profile, region and queue for your SCNet environment.
 Explicit options override defaults. Queue/quotas are queried before upload and
 submission. Static profile capacity is not current free capacity. An installed
 hashcat module is an account prerequisite, not installed by this skill.
@@ -103,7 +106,7 @@ bash tests/test-driver.sh
 bash tests/test-remote.sh
 ```
 
-Kunshan validation and its limits are recorded in
+SCNet cluster environment validation and its limits are recorded in
 [the test report](references/validation.md). Architecture and pinned vendored
 sources are described in [architecture](references/architecture.md).
 

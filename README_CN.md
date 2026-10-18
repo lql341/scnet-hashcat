@@ -4,7 +4,7 @@
 
 当前版本：0.2.0
 
-在 [SCNet](https://www.scnet.cn) 计算节点运行 [hashcat](https://hashcat.net/hashcat/)
+在[超算互联网（SCNet）](https://www.scnet.cn)集群环境运行 [hashcat](https://hashcat.net/hashcat/)
 离线密码恢复任务。应用 skill 与 [scnet-hpc](https://github.com/lql341/scnet-hpc)
 统一 profile、OpenAPI、凭证读取、有限资源作业和结果状态约定。
 
@@ -38,11 +38,11 @@ Linux/macOS、Windows 的官方安装器命令、其他 agent 的手动安装、
 
 先检查，不提交作业：
 
-> 使用 `$scnet-hashcat` 检查安装版本和昆山区域 11250 的资源，列出缺少的前置条件，并用自带合成哈希与字典生成离线计划；不要提交作业，缺少凭证时给我在本人终端填写的命令。
+> 使用 `$scnet-hashcat` 检查安装版本和我已配置的超算互联网集群环境资源，列出缺少的前置条件，并用自带合成哈希与字典生成离线计划；不要提交作业，缺少凭证时给我在本人终端填写的命令。
 
 凭证及远端 module 就绪后，明确授权小测试：
 
-> 使用 `$scnet-hashcat` 在昆山区域 11250、kshdnormal 队列运行自带的合成 MD5 字典测试，只用 1 节点、1 张 DCU、3 分钟时限；最多等待 15 分钟，回收结果并核对预期恢复 7 条中的 5 条，报告调度状态和 rank 完整性。
+> 使用 `$scnet-hashcat` 在我选定的超算互联网集群环境和队列运行自带的合成 MD5 字典测试，只用 1 节点、1 张 DCU、3 分钟时限；最多等待 15 分钟，回收结果并核对预期恢复 7 条中的 5 条，报告调度状态和 rank 完整性。
 
 处理自己的数据时，应说明本地输入路径、哈希模式、区域、队列、节点/DCU 预算和时限。
 更多提示语及完整 CLI 生命周期见[快速开始](references/quickstart_CN.md)。
@@ -51,17 +51,20 @@ Linux/macOS、Windows 的官方安装器命令、其他 agent 的手动安装、
 
 复用 scnet-hpc 的环境变量或系统凭据库（服务名 `scnet-hpc-openapi`）。
 `config.json` 只保存非敏感选项。独立使用时注入三项 OpenAPI 环境变量即可，
-详见[中文快速开始](references/quickstart_CN.md)。以下相对路径命令均在安装后的 skill 目录或克隆目录运行；agent 应先解析该目录的绝对路径。
+详见[中文快速开始](references/quickstart_CN.md)。以下相对路径命令均在安装后的 skill
+目录或克隆目录运行；agent 应先解析该目录的绝对路径。将 `<region-id>` 替换为已配置
+的目标区域。
 
 ```bash
-python3 scripts/hc.py doctor --region 11250
+python3 scripts/hc.py doctor --region "<region-id>"
 python3 scripts/hc.py crack --hashes hashes.txt --dict dict.txt --dry-run
-python3 scripts/hc.py crack --hashes hashes.txt --dict dict.txt --region 11250 --wait
-python3 scripts/hc.py status <作业号> --region 11250
-python3 scripts/hc.py collect <作业号> --region 11250 --out ./results
+python3 scripts/hc.py crack --hashes hashes.txt --dict dict.txt --region "<region-id>" --wait
+python3 scripts/hc.py status <作业号> --region "<region-id>"
+python3 scripts/hc.py collect <作业号> --region "<region-id>" --out ./results
 ```
 
-默认使用昆山 `kseshell` profile：1 节点、1 张 DCU、共 8 核、10 分钟。
+默认资源：1 节点、1 张 DCU、共 8 核、10 分钟。按实际超算互联网集群环境选择
+profile、区域和队列。
 显式参数覆盖默认值；上传和提交前查询实时队列及配额。profile 的静态容量不代表
 当前空闲资源。用户须已部署适用的 hashcat module，本 skill 不自动安装集群软件。
 
@@ -85,7 +88,7 @@ bash tests/test-driver.sh
 bash tests/test-remote.sh
 ```
 
-[昆山验证与限制](references/validation_CN.md)；
+[超算互联网集群环境验证与限制](references/validation_CN.md)；
 [架构及固定版本来源](references/architecture_CN.md)。
 
 MIT 许可证。OpenAPI 适配层和共享凭证/版本辅助模块派生自 MIT 许可的 scnet-hpc。

@@ -22,8 +22,8 @@ OpenAPI-first execution; explicit targets; live resource checks; bounded waiting
 compute-node evidence; and failure propagation. Application SemVer is independent
 of scnet-hpc's release number.
 
-The Kunshan application profile carries only account-neutral defaults. Other
+The bundled application profile carries only account-neutral execution defaults. Other
 clusters require an explicitly validated application profile/module. Reusing an
-SCNet region selection does not prove that Kunshan's hashcat module works there.
+SCNet region selection does not prove that the tested deployment's hashcat module works there.
 Future transports should fit behind a backend interface after a concrete need
 exists; this release does not advertise an unimplemented SSH fallback.

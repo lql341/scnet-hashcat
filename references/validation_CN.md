@@ -1,8 +1,10 @@
-# 昆山验证
+# 超算互联网集群环境验证
 
 [English](validation.md) | 中文
 
-2026-10-18 在昆山 SCNet 区域、`kshdnormal` 队列验证，使用账户已部署的
+记录结果仅适用于已测部署，不代表所有超算互联网集群环境。复现时将 `<region-id>` 换成有权限的目标区域。
+
+2026-10-18 在所选超算互联网集群环境验证，使用账户已部署的
 `hashcat/7.1.2-dtk` module。设备证据为 HIP、Device 66a1、每卡 16368 MB。
 输入全部为合成测试数据，每个作业时限 3 分钟，没有使用账户哈希或外部目标数据。
 
@@ -24,10 +26,10 @@
 ## 在授权资源范围内复现
 
 ```bash
-python3 scripts/hc.py doctor --region 11250
-python3 scripts/hc.py crack --hashes tests/data/hashes.txt --dict tests/data/dict.txt --region 11250 --nodes 2 --dcus-per-node 1 --walltime 00:03:00 --wait
-python3 scripts/hc.py crack --hashes tests/data/rules-hashes.txt --dict tests/data/rules-dict.txt --rules tests/data/rules.txt --region 11250 --nodes 2 --dcus-per-node 1 --walltime 00:03:00 --wait
-python3 scripts/hc.py crack --hashes tests/data/mask-hashes.txt --mask '?d?d' --region 11250 --nodes 1 --dcus-per-node 1 --walltime 00:03:00 --wait
+python3 scripts/hc.py doctor --region "<region-id>"
+python3 scripts/hc.py crack --hashes tests/data/hashes.txt --dict tests/data/dict.txt --region "<region-id>" --nodes 2 --dcus-per-node 1 --walltime 00:03:00 --wait
+python3 scripts/hc.py crack --hashes tests/data/rules-hashes.txt --dict tests/data/rules-dict.txt --rules tests/data/rules.txt --region "<region-id>" --nodes 2 --dcus-per-node 1 --walltime 00:03:00 --wait
+python3 scripts/hc.py crack --hashes tests/data/mask-hashes.txt --mask '?d?d' --region "<region-id>" --nodes 1 --dcus-per-node 1 --walltime 00:03:00 --wait
 ```
 
 规则样例覆盖 `hello`、`HELLO`、`admin1` 及一个故意不包含的候选。
