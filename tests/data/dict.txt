@@ -1,0 +1,12 @@
+alpha
+beta
+gamma
+password
+delta
+hashcat
+epsilon
+test123
+zeta
+qwerty
+eta
+letmein

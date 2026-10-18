@@ -1,0 +1,504 @@
+#!/usr/bin/env bash
+# hc - local driver for scnet-hashcat.
+#
+# Orchestrates a distributed hashcat run on an SCNet cluster:
+#   precheck -> upload inputs -> submit multi-node job -> wait -> collect
+#
+# The heavy lifting lives in scripts/scnet_lite.py (self-contained SCNet
+# OpenAPI client) and scripts/remote/hc-node.sh (per-node executor).
+#
+# Exit status: 0 success, 1 remote/job failure, 2 usage error.
+
+set -u
+
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT="$(dirname "$HERE")"
+
+# On MSYS/Git Bash, pwd yields /c/... which native Windows python.exe
+# misreads (MSYS rewrites it to C:\c\...). Convert to a native path when
+# cygpath or pwd -W is available.
+to_native_path() {
+  local p="$1"
+  case "$(uname -s 2>/dev/null)" in
+    MINGW*|MSYS*|CYGWIN*)
+      if command -v cygpath >/dev/null 2>&1; then
+        cygpath -w "$p"
+      elif (cd / && pwd -W) >/dev/null 2>&1; then
+        if [ -d "$p" ]; then (cd "$p" && pwd -W);
+        else
+          local dir base
+          dir="$(dirname "$p")"; base="$(basename "$p")"
+          (cd "$dir" && printf '%s/%s\n' "$(pwd -W)" "$base")
+        fi
+      else
+        printf '%s\n' "$p"
+      fi
+      ;;
+    *) printf '%s\n' "$p" ;;
+  esac
+}
+
+HERE_N="$(to_native_path "$HERE")"
+LITE="$HERE_N/scnet_lite.py"
+PRECHECK="$HERE_N/remote/hc-precheck.py"
+NODE_SH="$HERE_N/remote/hc-node.sh"
+COMMON_SH="$HERE_N/remote/hc-common.sh"
+VERSION="0.1.0"
+
+# ---------------------------------------------------------------- helpers --
+
+die() { echo "hc: error: $*" >&2; exit 2; }
+info() { echo "hc: $*"; }
+
+py() { python3 "$@"; }
+
+# json_get FILE KEY - print a scalar field from a JSON file (or '-' for stdin)
+json_get() {
+  py -c '
+import json, sys
+source = sys.argv[1]
+try:
+    if source == "-":
+        data = json.load(sys.stdin)
+    else:
+        with open(source) as fh:
+            data = json.load(fh)
+except (OSError, ValueError):
+    sys.exit(0)
+value = data.get(sys.argv[2], "")
+print(value if value is not None else "")
+' "$1" "$2"
+}
+
+abspath() {
+  # Resolve to an absolute path without requiring GNU realpath.
+  local target="$1"
+  local resolved
+  if [ -d "$target" ]; then resolved="$(cd "$target" && pwd)";
+  elif [ -f "$target" ]; then
+    local dir base
+    dir="$(dirname "$target")"; base="$(basename "$target")"
+    resolved="$(cd "$dir" && printf '%s/%s\n' "$(pwd)" "$base")"
+  else die "no such file: $target"; fi
+  to_native_path "$resolved"
+}
+
+lite() {
+  local region_flag=()
+  [ -n "${REGION:-}" ] && region_flag=(--region "$REGION")
+  py "$LITE" "${region_flag[@]}" "$@"
+}
+
+# ----------------------------------------------------------------- config --
+
+REGION="${SCNET_HASHCAT_REGION:-${SCNET_OPENAPI_REGION_ID:-}}"
+QUEUE="${SCNET_HASHCAT_QUEUE:-kshdnormal}"
+WALLTIME="${SCNET_HASHCAT_WALLTIME:-01:00:00}"
+NODES=1
+DCUS_PER_NODE=4
+CPUS_PER_NODE=8
+MODULE="${SCNET_HASHCAT_MODULE:-hashcat/7.1.2-dtk}"
+MODULEFILES="${SCNET_HASHCAT_MODULEFILES:-/public/home/luql/modulefiles}"
+WORKDIR=""
+NAME=""
+HASHES=""
+DICT=""
+RULES=""
+MASK=""
+MODE=0
+ATTACK=""
+EXTRA_ARGS=""
+WAIT=0
+DRY_RUN=0
+SKIP_PRECHECK=0
+OUTDIR_LOCAL=""
+HASHES_LOCAL=""
+JOB_ID=""
+
+# -------------------------------------------------------------- subcommands --
+
+usage() {
+  cat <<EOF
+hc $VERSION - distributed hashcat on SCNet, self-contained.
+
+Usage:
+  hc doctor
+  hc precheck --hashes FILE [--mode M] [--json]
+  hc crack --hashes FILE (--dict FILE | --mask MASK) [options]
+  hc status JOB_ID
+  hc collect JOB_ID [--out DIR]
+  hc split --input FILE --parts N --outdir DIR
+  hc version
+
+crack options:
+  --mode M            hashcat -m mode (default 0 = MD5)
+  --rules FILE        rules attack (-a 1); splits rules across nodes
+  --nodes N           nodes to allocate (default 1)
+  --dcus-per-node N   DCUs per node (default 4)
+  --cpus-per-node N   CPUs per node (default 8; note: --cpus is the job total)
+  --queue Q           partition (default $QUEUE)
+  --walltime T        HH:MM:SS (default $WALLTIME)
+  --work-dir DIR      remote base dir (default <home>/hashcat-runs)
+  --module NAME       hashcat module (default $MODULE)
+  --modulefiles DIR   personal modulefiles dir (default $MODULEFILES)
+  --name NAME         run name (default hc-<hashes>-<timestamp>)
+  --region ID         SCNet region (default \$SCNET_HASHCAT_REGION or 11250)
+  --extra-args "..."  extra hashcat args, e.g. "-w 4 -O"
+  --wait              block until the job finishes, then collect automatically
+  --dry-run           show the plan, submit nothing
+  --skip-precheck     bypass the CVE guard (not recommended)
+
+Credentials: SCNET_OPENAPI_USER / SCNET_OPENAPI_ACCESS_KEY /
+SCNET_OPENAPI_SECRET_KEY, or ~/.config/scnet-hashcat/config.json.
+EOF
+}
+
+cmd_version() { echo "hc $VERSION"; }
+
+cmd_doctor() {
+  local doc
+  doc="$(lite doctor)" || { echo "$doc" >&2; exit 1; }
+  local account queues limits
+  account="$(lite account)" || exit 1
+  echo "== cluster =="
+  echo "$doc" | py -c 'import json,sys; d=json.load(sys.stdin); [print(f"{k:14}: {v}") for k,v in d.items()]'
+  echo "== account =="
+  echo "$account" | py -c 'import json,sys; d=json.load(sys.stdin); [print(f"{k:14}: {v}") for k,v in d.items() if k!="raw"]'
+  echo "== local =="
+  command -v python3 >/dev/null || die "python3 not found"
+  echo "python3        : $(py -V 2>&1)"
+  echo "scripts        : $NODE_SH"
+}
+
+cmd_precheck() {
+  [ -n "$HASHES" ] || die "--hashes is required"
+  HASHES="$(abspath "$HASHES")"
+  local mode_arg=()
+  [ -n "$MODE" ] && mode_arg=(--mode "$MODE")
+  py "$PRECHECK" "$HASHES" "${mode_arg[@]}" --json
+}
+
+cmd_crack() {
+  [ -n "$HASHES" ] || die "--hashes is required"
+  HASHES="$(abspath "$HASHES")"
+  if [ -z "$ATTACK" ]; then
+    if [ -n "$MASK" ]; then ATTACK=3; else ATTACK=0; fi
+  fi
+  [ -n "$MASK" ] || [ "$ATTACK" != "3" ] || die "--mask is required for attack 3"
+  if [ "$ATTACK" = "0" ] || [ "$ATTACK" = "1" ]; then
+    [ -n "$DICT" ] || die "--dict is required for dictionary/rules attack"
+    DICT="$(abspath "$DICT")"
+  fi
+  [ -n "$RULES" ] && RULES="$(abspath "$RULES")"
+
+  # 1. CVE guard ------------------------------------------------------------
+  if [ "$SKIP_PRECHECK" = "0" ]; then
+    info "prechecking hash file (CVE guard)"
+    local mode_arg=()
+    if ! py "$PRECHECK" "$HASHES" --mode "$MODE" >/dev/null 2>&1; then
+      py "$PRECHECK" "$HASHES" --mode "$MODE"
+      die "hash file rejected by precheck; clean it or pass --skip-precheck"
+    fi
+    py "$PRECHECK" "$HASHES" --mode "$MODE" | sed 's/^/  /'
+  else
+    info "WARNING: skipping CVE precheck at user request"
+  fi
+
+  # 2. remote layout ---------------------------------------------------------
+  local doc home
+  doc="$(lite doctor)" || { echo "$doc" >&2; exit 1; }
+  home="$(echo "$doc" | json_get - home_path)"
+  [ -n "$home" ] || die "could not resolve remote home directory"
+  HASHES_LOCAL="$HASHES"
+  local base="${WORKDIR:-$home/hashcat-runs}"
+  local ts; ts="$(date +%Y%m%d-%H%M%S)"
+  [ -n "$NAME" ] || NAME="hc-$(basename "$HASHES" | tr -c 'A-Za-z0-9._-' '_')-$ts"
+  local run_dir="$base/$NAME"
+  local inputs="$run_dir/inputs"
+  local results="$run_dir/results"
+
+  local total_cpus=$((CPUS_PER_NODE * NODES))
+
+  # 3. plan ------------------------------------------------------------------
+  echo "== plan =="
+  echo "  region        : ${REGION:-<auto>}"
+  echo "  queue         : $QUEUE"
+  echo "  nodes         : $NODES (cpus $total_cpus = $CPUS_PER_NODE/node, dcus $DCUS_PER_NODE/node)"
+  echo "  walltime      : $WALLTIME"
+  echo "  attack        : $ATTACK (mode $MODE)"
+  echo "  hashes        : $HASHES"
+  echo "  dict          : ${DICT:-<none>}"
+  echo "  rules         : ${RULES:-<none>}"
+  echo "  mask          : ${MASK:-<none>}"
+  echo "  remote dir    : $run_dir"
+  echo "  module        : $MODULE"
+
+  # 4. preflight: account + queue -------------------------------------------
+  local account
+  account="$(lite account)" || exit 1
+  echo "  account       : $(echo "$account" | json_get - user) balance=$(echo "$account" | json_get - balance) status=$(echo "$account" | json_get - account_status)"
+  local queue_ok
+  queue_ok="$(lite queues | py -c '
+import json,sys
+try: data=json.load(sys.stdin)
+except ValueError: sys.exit(0)
+for q in data.get("items",[]):
+    if q.get("partition")==sys.argv[1]:
+        print("free_nodes={} max_nodes={} max_dcus_per_node={}".format(
+            q.get("free_nodes"), q.get("max_nodes"), q.get("max_dcus_per_node")))
+' "$QUEUE")"
+  [ -n "$queue_ok" ] && echo "  queue state   : $queue_ok"
+
+  if [ "$DRY_RUN" = "1" ]; then
+    echo "== dry run: nothing submitted =="
+    return 0
+  fi
+
+  # 5. upload ----------------------------------------------------------------
+  info "creating remote directory $run_dir"
+  lite mkdir "$inputs" >/dev/null || exit 1
+  lite mkdir "$results" >/dev/null || exit 1
+  info "uploading inputs"
+  lite upload "$HASHES" "$inputs" --cover >/dev/null || exit 1
+  if [ -n "$DICT" ]; then
+    lite upload "$DICT" "$inputs" --cover --chunk-mib 8 >/dev/null || exit 1
+  fi
+  if [ -n "$RULES" ]; then
+    lite upload "$RULES" "$inputs" --cover >/dev/null || exit 1
+  fi
+  lite upload "$NODE_SH" "$run_dir" --cover >/dev/null || exit 1
+  lite upload "$COMMON_SH" "$run_dir" --cover >/dev/null || exit 1
+
+  # 6. submit ----------------------------------------------------------------
+  local hashes_r="$inputs/$(basename "$HASHES")"
+  local dict_r="" rules_r=""
+  [ -n "$DICT" ] && dict_r="$inputs/$(basename "$DICT")"
+  [ -n "$RULES" ] && rules_r="$inputs/$(basename "$RULES")"
+  local node_args="--hashes $hashes_r --attack $ATTACK --mode $MODE --nodes $NODES --module $MODULE --modulefiles $MODULEFILES --outdir $results"
+  [ -n "$dict_r" ] && node_args="$node_args --dict $dict_r"
+  [ -n "$rules_r" ] && node_args="$node_args --rules $rules_r"
+  [ -n "$MASK" ] && node_args="$node_args --mask '$MASK'"
+  [ -n "$EXTRA_ARGS" ] && node_args="$node_args --extra-args '$EXTRA_ARGS'"
+
+  local submit_out
+  submit_out="$(lite submit --name "$NAME" --queue "$QUEUE" \
+    --nodes "$NODES" --cpus "$total_cpus" --dcus "$DCUS_PER_NODE" \
+    --walltime "$WALLTIME" --work-dir "$run_dir" \
+    --command "bash $run_dir/hc-node.sh $node_args")" || { echo "$submit_out" >&2; exit 1; }
+  JOB_ID="$(echo "$submit_out" | json_get - job_id)"
+  [ -n "$JOB_ID" ] || die "submit returned no job id"
+
+  echo "== submitted =="
+  echo "  job id        : $JOB_ID"
+  echo "  run dir       : $run_dir"
+  echo "  track         : hc status $JOB_ID"
+  echo "  collect       : hc collect $JOB_ID --out ./hc-out-$JOB_ID"
+
+  if [ "$WAIT" = "1" ]; then
+    info "waiting for job $JOB_ID"
+    lite wait "$JOB_ID" --interval 15 --timeout 86400 >/dev/null || true
+    cmd_collect
+  fi
+}
+
+cmd_status() {
+  [ -n "$JOB_ID" ] || die "job id required"
+  local job
+  job="$(lite job "$JOB_ID")" || { echo "$job" >&2; exit 1; }
+  echo "$job" | py -c '
+import json,sys
+d=json.load(sys.stdin)
+for k in ("job_id","name","state","queue","nodes","cpus","dcus","elapsed","reason"):
+    print(f"{k:10}: {d.get(k)}")'
+  # remote progress if reachable
+  local work_dir
+  work_dir="$(echo "$job" | json_get - work_dir)"
+  if [ -n "$work_dir" ]; then
+    local listing
+    listing="$(lite ls "$work_dir/results" 2>/dev/null || true)"
+    if [ -n "$listing" ]; then
+      echo "results       :"
+      echo "$listing" | py -c '
+import json,sys
+try: data=json.load(sys.stdin)
+except ValueError: sys.exit(0)
+for f in data.get("files",[]):
+    print(f"  {f.get(\"name\"):24} {f.get(\"size\")}")'
+    fi
+  fi
+}
+
+cmd_collect() {
+  [ -n "$JOB_ID" ] || die "job id required"
+  local out="${OUTDIR_LOCAL:-./hc-out-$JOB_ID}"
+  mkdir -p "$out"
+  local job work_dir
+  job="$(lite job "$JOB_ID")" || { echo "$job" >&2; exit 1; }
+  work_dir="$(echo "$job" | json_get - work_dir)"
+  [ -n "$work_dir" ] || die "job has no work dir"
+  info "collecting from $work_dir into $out"
+
+  local listing listing_file
+  listing="$(lite ls "$work_dir/results")" || exit 1
+  listing_file="$(to_native_path "$(pwd)/.hc-listing-$$")"
+  printf '%s' "$listing" > "$listing_file"
+  py -c '
+import json, subprocess, sys
+listing_file, work_dir, out, lite = sys.argv[1:5]
+with open(listing_file) as fh:
+    data = json.load(fh)
+for f in data.get("files", []):
+    if f.get("directory"):
+        continue
+    remote = work_dir + "/results/" + f["name"]
+    local = out + "/" + f["name"]
+    subprocess.run([sys.executable, lite, "download", remote, local, "--cover"],
+                   check=True, stdout=subprocess.DEVNULL)
+' "$listing_file" "$work_dir" "$out" "$LITE" || { rm -f "$listing_file"; exit 1; }
+  rm -f "$listing_file"
+
+  # merge potfiles
+  local hashes_for_count="${HASHES_LOCAL:-}"
+  if [ -z "$hashes_for_count" ]; then
+    # standalone collect: fetch the hash file from the remote inputs dir.
+    # Prefer a file whose name mentions "hash"; fall back to the first file.
+    local remote_hashes
+    remote_hashes="$(lite ls "$work_dir/inputs" 2>/dev/null | py -c '
+import json,sys
+try: data=json.load(sys.stdin)
+except ValueError: sys.exit(0)
+files=[f for f in data.get("files",[]) if not f.get("directory")]
+chosen=None
+for f in files:
+    if "hash" in (f.get("name") or "").lower():
+        chosen=f; break
+if chosen is None and files:
+    chosen=files[0]
+print((chosen or {}).get("path") or "")')"
+    if [ -n "$remote_hashes" ]; then
+      hashes_for_count="$out/remote-hashes.txt"
+      lite download "$remote_hashes" "$hashes_for_count" --cover >/dev/null 2>&1 || hashes_for_count=""
+    fi
+  fi
+  py - "$out" "$hashes_for_count" <<'PY'
+import json, glob, os, sys
+out, hashes = sys.argv[1], sys.argv[2]
+pots = sorted(glob.glob(os.path.join(out, "pot.*")))
+cracked = []
+seen = set()
+for pot in pots:
+    with open(pot, errors="replace") as fh:
+        for line in fh:
+            line = line.rstrip("\n")
+            if line and line not in seen:
+                seen.add(line)
+                cracked.append(line)
+with open(os.path.join(out, "pot.merged"), "w") as fh:
+    fh.write("\n".join(cracked) + ("\n" if cracked else ""))
+total_hashes = 0
+if hashes and os.path.exists(hashes):
+    with open(hashes, errors="replace") as fh:
+        total_hashes = sum(1 for line in fh if line.strip())
+summary = {
+    "job_id": os.path.basename(out).replace("hc-out-", ""),
+    "cracked": len(cracked),
+    "total_hashes": total_hashes,
+    "remaining": max(total_hashes - len(cracked), 0),
+}
+with open(os.path.join(out, "report.json"), "w") as fh:
+    json.dump(summary, fh, indent=2)
+print(json.dumps(summary, indent=2))
+PY
+
+  # also grab job std logs
+  local stdout_path
+  stdout_path="$(echo "$job" | json_get - stdout)"
+  [ -n "$stdout_path" ] && lite download "$stdout_path" "$out/std.out" --cover >/dev/null 2>&1 || true
+
+  echo "== report =="
+  echo "  collected to  : $out"
+  echo "  pot.merged    : $(wc -l < "$out/pot.merged" 2>/dev/null || echo 0) cracked entries"
+  if [ -f "$out/summary.json" ]; then
+    py -c '
+import json,sys
+try:
+    d=json.load(open(sys.argv[1]))
+except (OSError,ValueError):
+    sys.exit(0)
+print("  ranks         : {}/{} ok, total_cracked={}, max_elapsed={}s".format(
+    d.get("ranks_total",0)-d.get("ranks_failed",0), d.get("ranks_total",0),
+    d.get("total_cracked"), d.get("max_elapsed_s")))
+for r in d.get("ranks",[]):
+    if r.get("error"):
+        print("  rank {} FAILED: {} (host {})".format(r.get("rank"), r.get("error"), r.get("host")))
+' "$out/summary.json"
+  fi
+  if [ -f "$out/cracked.0" ]; then
+    echo "  sample        :"
+    head -5 "$out/cracked.0" | sed 's/^/    /'
+  fi
+}
+
+cmd_split() {
+  [ -n "$DICT" ] || die "--input is required"
+  local parts="${NODES:-1}"
+  [ "$parts" -ge 1 ] || die "--parts must be >= 1"
+  local outdir="${OUTDIR_LOCAL:-./split-$(basename "$DICT")}"
+  mkdir -p "$outdir"
+  split -n "l/$parts" --numeric-suffixes --suffix-length=3 "$DICT" "$outdir/part."
+  info "split $DICT into $parts parts under $outdir"
+  ls -l "$outdir" | sed 's/^/  /'
+}
+
+# ------------------------------------------------------------------ parsing --
+
+# crack-specific options are parsed by cmd_crack; shared ones here.
+JOB_ID_POSITIONAL=""
+
+if [ $# -eq 0 ]; then usage; exit 2; fi
+CMD="$1"; shift
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --region) REGION="$2"; shift 2 ;;
+    --queue) QUEUE="$2"; shift 2 ;;
+    --walltime) WALLTIME="$2"; shift 2 ;;
+    --nodes) NODES="$2"; shift 2 ;;
+    --dcus-per-node) DCUS_PER_NODE="$2"; shift 2 ;;
+    --cpus-per-node) CPUS_PER_NODE="$2"; shift 2 ;;
+    --module) MODULE="$2"; shift 2 ;;
+    --modulefiles) MODULEFILES="$2"; shift 2 ;;
+    --work-dir) WORKDIR="$2"; shift 2 ;;
+    --name) NAME="$2"; shift 2 ;;
+    --hashes) HASHES="$2"; shift 2 ;;
+    --dict) DICT="$2"; shift 2 ;;
+    --input) DICT="$2"; shift 2 ;;
+    --rules) RULES="$2"; shift 2 ;;
+    --mask) MASK="$2"; shift 2 ;;
+    --mode) MODE="$2"; shift 2 ;;
+    --attack) ATTACK="$2"; shift 2 ;;
+    --extra-args) EXTRA_ARGS="$2"; shift 2 ;;
+    --parts) NODES="$2"; shift 2 ;;
+    --out) OUTDIR_LOCAL="$2"; shift 2 ;;
+    --outdir) OUTDIR_LOCAL="$2"; shift 2 ;;
+    --wait) WAIT=1; shift ;;
+    --dry-run) DRY_RUN=1; shift ;;
+    --skip-precheck) SKIP_PRECHECK=1; shift ;;
+    --json) shift ;;
+    -h|--help) usage; exit 0 ;;
+    --*) die "unknown option: $1" ;;
+    *) if [ -z "$JOB_ID_POSITIONAL" ]; then JOB_ID_POSITIONAL="$1"; else die "unexpected argument: $1"; fi; shift ;;
+  esac
+done
+
+case "$CMD" in
+  doctor) cmd_doctor ;;
+  precheck) cmd_precheck ;;
+  crack) cmd_crack ;;
+  status) JOB_ID="$JOB_ID_POSITIONAL"; cmd_status ;;
+  collect) JOB_ID="$JOB_ID_POSITIONAL"; cmd_collect ;;
+  split) cmd_split ;;
+  version) cmd_version ;;
+  -h|--help|help) usage; exit 0 ;;
+  *) usage; exit 2 ;;
+esac

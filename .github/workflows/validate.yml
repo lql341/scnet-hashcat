@@ -1,0 +1,42 @@
+name: Validate skill
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Validate shell syntax
+        run: |
+          for script in scripts/hc scripts/remote/*.sh; do
+            bash -n "$script"
+          done
+
+      - name: Validate Python syntax
+        run: python3 -m py_compile scripts/*.py scripts/remote/*.py
+
+      - name: Validate version
+        run: |
+          grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$' VERSION
+          test "$(bash scripts/hc version)" = "hc $(cat VERSION)"
+
+      - name: Test precheck (clean and hostile hash files)
+        run: python3 tests/test-precheck.py
+
+      - name: Test driver argument parsing
+        run: bash tests/test-driver.sh
+
+      - name: Check repository hygiene
+        run: |
+          git diff --check
+          if git grep -nE 'BEGIN (RSA |OPENSSH |EC )?PRIVATE KEY|(^|[[:space:]])(export[[:space:]]+)?(API_KEY|ACCESS_KEY|SECRET_KEY|TOKEN|PASSWORD)[[:space:]]*=[[:space:]]*[^<[:space:]]+' -- ':!*.md' ':!.github/**'; then
+            echo "suspected credential in repository" >&2
+            exit 1
+          fi

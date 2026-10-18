@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+hc-out-*/
+out/
+split-*/
+.cache/
+config.local.json
