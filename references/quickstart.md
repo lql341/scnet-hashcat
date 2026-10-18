@@ -2,6 +2,8 @@
 
 English | [中文](quickstart_CN.md)
 
+Replace `<region-id>` and `<queue>` in commands with the actual configured target; these are execution choices, not part of the application name.
+
 ## First-run prerequisites
 
 Start with [installation](installation.md) if the skill is not installed. Run the
@@ -11,8 +13,8 @@ place of `python3`. An agent should resolve this directory to an absolute path.
 1. Local Python 3.8+ and the complete skill suffice for help, input checks and
    dry-run. No local GPU, hashcat or SCNet credential is needed for those operations.
 2. Real operations need an SCNet account with the target region enabled, queue
-   permission, sufficient balance and quota. Kunshan examples use region `11250`,
-   profile `kseshell`, queue `kshdnormal`; other regions need validated profiles.
+   permission, sufficient balance and quota. Select the actual region ID, cluster
+   profile and queue for your SCNet cluster environment; validate their compatibility.
 3. Prepare the platform username and HPC OpenAPI AK/SK. These are not a model API
    key, account password or SSH key. OpenAPI handles jobs/files; separate deployment
    or remote shell diagnosis may need SSH through scnet-hpc.
@@ -67,7 +69,7 @@ printf '\n'
 read -r -s -p 'SecretKey: ' SCNET_OPENAPI_SECRET_KEY
 printf '\n'
 export SCNET_OPENAPI_USER SCNET_OPENAPI_ACCESS_KEY SCNET_OPENAPI_SECRET_KEY
-python3 scripts/hc.py doctor --region 11250
+python3 scripts/hc.py doctor --region "<region-id>"
 ```
 
 Windows PowerShell:
@@ -76,7 +78,7 @@ Windows PowerShell:
 $env:SCNET_OPENAPI_USER = Read-Host 'SCNet platform username'
 $env:SCNET_OPENAPI_ACCESS_KEY = [System.Net.NetworkCredential]::new('', (Read-Host 'AccessKey' -AsSecureString)).Password
 $env:SCNET_OPENAPI_SECRET_KEY = [System.Net.NetworkCredential]::new('', (Read-Host 'SecretKey' -AsSecureString)).Password
-python scripts/hc.py doctor --region 11250
+python scripts/hc.py doctor --region "<region-id>"
 ```
 
 ## Check the remote module, then run a small job
@@ -96,9 +98,9 @@ task. `doctor` checks API resources, not the remote binary or module.
 After credentials and the module are ready:
 
 ```bash
-python3 scripts/hc.py doctor --region 11250
-python3 scripts/hc.py crack --hashes tests/data/hashes.txt --dict tests/data/dict.txt --mode 0 --region 11250 --queue kshdnormal --nodes 1 --dcus-per-node 1 --walltime 00:03:00 --dry-run
-python3 scripts/hc.py crack --hashes tests/data/hashes.txt --dict tests/data/dict.txt --mode 0 --region 11250 --queue kshdnormal --nodes 1 --dcus-per-node 1 --walltime 00:03:00 --wait --wait-timeout 900
+python3 scripts/hc.py doctor --region "<region-id>"
+python3 scripts/hc.py crack --hashes tests/data/hashes.txt --dict tests/data/dict.txt --mode 0 --region "<region-id>" --queue "<queue>" --nodes 1 --dcus-per-node 1 --walltime 00:03:00 --dry-run
+python3 scripts/hc.py crack --hashes tests/data/hashes.txt --dict tests/data/dict.txt --mode 0 --region "<region-id>" --queue "<queue>" --nodes 1 --dcus-per-node 1 --walltime 00:03:00 --wait --wait-timeout 900
 ```
 
 The last command consumes compute resources. Expected recovery is **5 of 7**;
@@ -114,11 +116,11 @@ Replace paths/mode and specify target, resource budget and walltime. On Windows
 use native absolute local paths. Hashes/dictionary/rules are **local** files;
 `--work-dir` and `--modulefiles` are **remote POSIX** paths.
 
-> Use `$scnet-hashcat` to process my authorized MD5 input `/absolute/local/hashes.txt` with dictionary `/absolute/local/dict.txt` in Kunshan region 11250, queue kshdnormal, one node and one DCU for at most ten minutes; validate inputs/resources, submit once, wait up to 15 minutes and collect, reporting scheduler state and every expected rank without printing recovered plaintext.
+> Use `$scnet-hashcat` to process my authorized MD5 input `/absolute/local/hashes.txt` with dictionary `/absolute/local/dict.txt` in my selected SCNet cluster environment and queue, one node and one DCU for at most ten minutes; validate inputs/resources, submit once, wait up to 15 minutes and collect, reporting scheduler state and every expected rank without printing recovered plaintext.
 
-> Use `$scnet-hashcat` to check job `<job-id>` in region 11250 and collect its results into a new local directory; report missing/failed ranks and keep partial artifacts.
+> Use `$scnet-hashcat` to check job `<job-id>` in my selected SCNet region and collect its results into a new local directory; report missing/failed ranks and keep partial artifacts.
 
-> Use `$scnet-hashcat` to cancel job `<job-id>` in region 11250, then query and report its actual state.
+> Use `$scnet-hashcat` to cancel job `<job-id>` in my selected SCNet region, then query and report its actual state.
 
 Replace job placeholders with real IDs. Cancellation acknowledgment alone does not
 prove that the scheduler has finished cleanup.
@@ -133,7 +135,7 @@ configuration is read. `$XDG_CONFIG_HOME/scnet-hpc/config.json` (or
 `~/.config/scnet-hpc/config.json`) can hold:
 
 ```json
-{"backend":"openapi","openapi":{"default_region_id":"11250"}}
+{"backend":"openapi","openapi":{"default_region_id":"<region-id>"}}
 ```
 
 Region precedence: `--region`, `SCNET_HASHCAT_REGION`,
@@ -144,10 +146,10 @@ Use scnet-hpc for credential setup, module deployment or shell diagnosis.
 ## Preflight and run
 
 ```bash
-python3 scripts/hc.py doctor --region 11250
+python3 scripts/hc.py doctor --region "<region-id>"
 python3 scripts/hc.py precheck --hashes tests/data/hashes.txt --mode 0
 python3 scripts/hc.py crack --hashes tests/data/hashes.txt --dict tests/data/dict.txt --dry-run
-python3 scripts/hc.py crack --hashes tests/data/hashes.txt --dict tests/data/dict.txt --region 11250 --nodes 2 --dcus-per-node 1 --walltime 00:03:00 --wait
+python3 scripts/hc.py crack --hashes tests/data/hashes.txt --dict tests/data/dict.txt --region "<region-id>" --nodes 2 --dcus-per-node 1 --walltime 00:03:00 --wait
 ```
 
 `--dry-run` is entirely local. Real submission queries live queue limits/quotas
@@ -159,9 +161,9 @@ and checks device visibility. Module installation is a separate scnet-hpc operat
 ```bash
 python3 scripts/hc.py crack --hashes hashes.txt --dict dict.txt --rules best64.rule --nodes 2 --wait
 python3 scripts/hc.py crack --hashes hashes.txt --mask '?d?d' --nodes 1 --wait
-python3 scripts/hc.py status <job-id> --region 11250
-python3 scripts/hc.py collect <job-id> --region 11250 --out ./results
-python3 scripts/hc.py cancel <job-id> --region 11250
+python3 scripts/hc.py status <job-id> --region "<region-id>"
+python3 scripts/hc.py collect <job-id> --region "<region-id>" --out ./results
+python3 scripts/hc.py cancel <job-id> --region "<region-id>"
 ```
 
 `--rules` selects rules splitting automatically; the old `--attack 1` is an

@@ -2,6 +2,7 @@
 
 ## 0.2.0 (2026-10-18)
 
+- Generalize public titles, prompts and examples to SCNet cluster environments.
 - Document one-sentence agent installation, platform-specific installer commands,
   staged prerequisites, credential setup, module readiness and first-run usage.
 - Align application layout, English/Chinese docs, XDG region selection and secure
@@ -16,7 +17,7 @@
   recovery artifacts private, exclude stale merged potfiles and count unique hashes.
 - Correct mask keyspace interpretation and unsupported CVE protection claims;
   reject unsupported PKZIP validation rather than checking the wrong format.
-- Add offline behavioral tests and bounded Kunshan synthetic-workload validation.
+- Add offline behavioral tests and bounded SCNet cluster-environment synthetic-workload validation.
 
 ## 0.1.0 (2026-10-18)
 

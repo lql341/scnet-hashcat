@@ -2,6 +2,8 @@
 
 [English](quickstart.md) | 中文
 
+命令中的 `<region-id>`、`<queue>` 须换成实际已配置目标；它们属于执行选择，不属于应用名称或定位。
+
 ## 首次使用的前置条件
 
 未安装时先看[安装教程](installation_CN.md)。下文命令在安装后的 skill 根目录执行，
@@ -9,8 +11,8 @@ Windows 把 `python3` 换成 `python` 或 `py -3`。agent 应先解析实际安�
 
 1. 本地 Python 3.8+ 和完整 skill 即可查看帮助、预检和 dry-run；这些操作不要求
    本地 GPU、hashcat 或 SCNet 凭证。
-2. 真实操作需已开通目标区域的 SCNet 账号、队列权限、足够余额和配额。昆山示例为
-   区域 `11250`、profile `kseshell`、队列 `kshdnormal`；其他区域需验证对应 profile。
+2. 真实操作需已开通目标区域的 SCNet 账号、队列权限、足够余额和配额。
+   按实际超算互联网集群环境选择区域 ID、profile 和队列，并验证兼容性。
 3. 准备平台用户名及 HPC OpenAPI AK/SK，不是模型 API Key、账号密码或 SSH 私钥。
    作业/文件操作走 OpenAPI，单独部署软件或远端 shell 排障才可能需要 scnet-hpc 的 SSH。
 4. 远端账户已有兼容 hashcat module、已存在且可读的 modulefiles 目录，以及所有
@@ -58,7 +60,7 @@ printf '\n'
 read -r -s -p 'SecretKey: ' SCNET_OPENAPI_SECRET_KEY
 printf '\n'
 export SCNET_OPENAPI_USER SCNET_OPENAPI_ACCESS_KEY SCNET_OPENAPI_SECRET_KEY
-python3 scripts/hc.py doctor --region 11250
+python3 scripts/hc.py doctor --region "<region-id>"
 ```
 
 Windows PowerShell：
@@ -67,7 +69,7 @@ Windows PowerShell：
 $env:SCNET_OPENAPI_USER = Read-Host 'SCNet platform username'
 $env:SCNET_OPENAPI_ACCESS_KEY = [System.Net.NetworkCredential]::new('', (Read-Host 'AccessKey' -AsSecureString)).Password
 $env:SCNET_OPENAPI_SECRET_KEY = [System.Net.NetworkCredential]::new('', (Read-Host 'SecretKey' -AsSecureString)).Password
-python scripts/hc.py doctor --region 11250
+python scripts/hc.py doctor --region "<region-id>"
 ```
 
 ## 先核对远端 module，再跑小作业
@@ -86,9 +88,9 @@ python scripts/hc.py doctor --region 11250
 凭证和 module 就绪后：
 
 ```bash
-python3 scripts/hc.py doctor --region 11250
-python3 scripts/hc.py crack --hashes tests/data/hashes.txt --dict tests/data/dict.txt --mode 0 --region 11250 --queue kshdnormal --nodes 1 --dcus-per-node 1 --walltime 00:03:00 --dry-run
-python3 scripts/hc.py crack --hashes tests/data/hashes.txt --dict tests/data/dict.txt --mode 0 --region 11250 --queue kshdnormal --nodes 1 --dcus-per-node 1 --walltime 00:03:00 --wait --wait-timeout 900
+python3 scripts/hc.py doctor --region "<region-id>"
+python3 scripts/hc.py crack --hashes tests/data/hashes.txt --dict tests/data/dict.txt --mode 0 --region "<region-id>" --queue "<queue>" --nodes 1 --dcus-per-node 1 --walltime 00:03:00 --dry-run
+python3 scripts/hc.py crack --hashes tests/data/hashes.txt --dict tests/data/dict.txt --mode 0 --region "<region-id>" --queue "<queue>" --nodes 1 --dcus-per-node 1 --walltime 00:03:00 --wait --wait-timeout 900
 ```
 
 最后一条会消耗算力。预期恢复 **7 条中的 5 条**，另外两条故意不在字典覆盖范围。
@@ -101,11 +103,11 @@ python3 scripts/hc.py crack --hashes tests/data/hashes.txt --dict tests/data/dic
 替换路径/模式，说明目标和资源/时间预算。Windows 使用原生本地绝对路径。
 哈希、字典、规则参数是**本地**文件；`--work-dir`、`--modulefiles` 是**远端 POSIX** 路径。
 
-> 使用 `$scnet-hashcat` 在昆山区域 11250、kshdnormal 队列处理我有权恢复的 MD5 文件 `/absolute/local/hashes.txt`，字典为 `/absolute/local/dict.txt`，只用 1 节点 1 DCU、10 分钟时限；检查输入和资源后只提交一次，最多等待 15 分钟并回收结果，报告调度状态和每个预期 rank，不在聊天中打印恢复明文。
+> 使用 `$scnet-hashcat` 在我选定的超算互联网集群环境和队列处理我有权恢复的 MD5 文件 `/absolute/local/hashes.txt`，字典为 `/absolute/local/dict.txt`，只用 1 节点 1 DCU、10 分钟时限；检查输入和资源后只提交一次，最多等待 15 分钟并回收结果，报告调度状态和每个预期 rank，不在聊天中打印恢复明文。
 
-> 使用 `$scnet-hashcat` 检查区域 11250 的作业 `<作业号>`，回收到一个新的本地目录，报告缺失或失败的 rank 并保留部分产物。
+> 使用 `$scnet-hashcat` 检查所选超算互联网区域的作业 `<作业号>`，回收到一个新的本地目录，报告缺失或失败的 rank 并保留部分产物。
 
-> 使用 `$scnet-hashcat` 取消区域 11250 的作业 `<作业号>`，随后查询并报告实际状态。
+> 使用 `$scnet-hashcat` 取消所选超算互联网区域的作业 `<作业号>`，随后查询并报告实际状态。
 
 作业号需替换成真实值。取消请求被接受不等于调度器已完成清理。
 
@@ -118,7 +120,7 @@ python3 scripts/hc.py crack --hashes tests/data/hashes.txt --dict tests/data/dic
 仅记录非敏感默认项，例如：
 
 ```json
-{"backend":"openapi","openapi":{"default_region_id":"11250"}}
+{"backend":"openapi","openapi":{"default_region_id":"<region-id>"}}
 ```
 
 区域优先级：`--region`、`SCNET_HASHCAT_REGION`、`SCNET_OPENAPI_REGION_ID`、
@@ -128,10 +130,10 @@ scnet-hashcat/scnet-hpc 保存的默认项、所选 profile。应用仅用 OpenA
 ## 检查和运行
 
 ```bash
-python3 scripts/hc.py doctor --region 11250
+python3 scripts/hc.py doctor --region "<region-id>"
 python3 scripts/hc.py precheck --hashes tests/data/hashes.txt --mode 0
 python3 scripts/hc.py crack --hashes tests/data/hashes.txt --dict tests/data/dict.txt --dry-run
-python3 scripts/hc.py crack --hashes tests/data/hashes.txt --dict tests/data/dict.txt --region 11250 --nodes 2 --dcus-per-node 1 --walltime 00:03:00 --wait
+python3 scripts/hc.py crack --hashes tests/data/hashes.txt --dict tests/data/dict.txt --region "<region-id>" --nodes 2 --dcus-per-node 1 --walltime 00:03:00 --wait
 ```
 
 `--dry-run` 完全本地执行。真实提交在上传前检查实时队列限制和用户配额。
@@ -142,9 +144,9 @@ python3 scripts/hc.py crack --hashes tests/data/hashes.txt --dict tests/data/dic
 ```bash
 python3 scripts/hc.py crack --hashes hashes.txt --dict dict.txt --rules best64.rule --nodes 2 --wait
 python3 scripts/hc.py crack --hashes hashes.txt --mask '?d?d' --nodes 1 --wait
-python3 scripts/hc.py status <作业号> --region 11250
-python3 scripts/hc.py collect <作业号> --region 11250 --out ./results
-python3 scripts/hc.py cancel <作业号> --region 11250
+python3 scripts/hc.py status <作业号> --region "<region-id>"
+python3 scripts/hc.py collect <作业号> --region "<region-id>" --out ./results
+python3 scripts/hc.py cancel <作业号> --region "<region-id>"
 ```
 
 `--rules` 自动选择规则切分；旧 `--attack 1` 为应用兼容别名，不是 hashcat 的组合攻击。

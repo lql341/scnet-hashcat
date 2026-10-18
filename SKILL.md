@@ -33,13 +33,13 @@ available; this skill also runs independently with environment credentials.
 ## Workflow
 
 ```bash
-python3 scripts/hc.py doctor --region 11250
+python3 scripts/hc.py doctor --region "<region-id>"
 python3 scripts/hc.py precheck --hashes hashes.txt --mode 0
 python3 scripts/hc.py crack --hashes hashes.txt --dict dict.txt --dry-run
-python3 scripts/hc.py crack --hashes hashes.txt --dict dict.txt --region 11250 --wait
-python3 scripts/hc.py status <job-id> --region 11250
-python3 scripts/hc.py collect <job-id> --region 11250 --out ./results
-python3 scripts/hc.py cancel <job-id> --region 11250
+python3 scripts/hc.py crack --hashes hashes.txt --dict dict.txt --region "<region-id>" --wait
+python3 scripts/hc.py status <job-id> --region "<region-id>"
+python3 scripts/hc.py collect <job-id> --region "<region-id>" --out ./results
+python3 scripts/hc.py cancel <job-id> --region "<region-id>"
 ```
 
 Match nodes, DCUs, walltime, queue and input scope to the user's authorization.

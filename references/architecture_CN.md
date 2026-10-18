@@ -17,6 +17,6 @@ scnet-hashcat 负责应用：输入角色、hashcat 参数、切分、rank 执�
 XDG 非敏感配置、环境变量或系统凭据库、OpenAPI 优先、明确目标、实时资源检查、
 有限等待、计算节点证据和错误传播。应用 SemVer 独立，不强行使用 scnet-hpc 版本号。
 
-昆山应用 profile 仅保存非个人默认项。其他集群需要明确验证对应的 profile/module。
-复用 SCNet 区域选择不证明昆山的 hashcat module 在别处可用。未来有具体需求时，
+内置应用 profile 仅保存非个人执行默认项。其他集群需要明确验证对应的 profile/module。
+复用 SCNet 区域选择不证明已测环境的 hashcat module 在别处可用。未来有具体需求时，
 再通过 backend 接口扩展传输；本版不宣称已支持 SSH 后备。
