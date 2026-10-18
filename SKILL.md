@@ -1,101 +1,83 @@
 ---
 name: scnet-hashcat
-description: Run distributed hashcat password-recovery jobs on SCNet HPC clusters (Hygon DCU), single or multi-node, with CVE precheck and automatic result collection.
+description: Run authorized offline hashcat password-recovery jobs on SCNet HPC DCU resources, with input checks, bounded scheduling, distributed execution, and result collection.
 ---
 
 # SCNet hashcat
 
-Distributed hashcat on SCNet. One command runs the whole pipeline: precheck the
-hash file, upload inputs, submit a multi-node Slurm job with one hashcat per
-node, wait, and collect merged results. The cluster access layer is a
-self-contained OpenAPI client vendored from scnet-hpc; this skill does not
-require scnet-hpc to be installed.
+Use this application skill for hashcat workloads on SCNet. Prefer OpenAPI for
+resource discovery, file transfer, submission and status. Use scnet-hpc for
+first-use setup, SSH, software deployment and broader cluster diagnosis when
+available; this skill also runs independently with environment credentials.
 
-## Requirements
+## First use and selection
 
-- `python3` 3.8+ on the machine driving the job (standard library only).
-- OpenAPI credentials: `SCNET_OPENAPI_USER` / `SCNET_OPENAPI_ACCESS_KEY` /
-  `SCNET_OPENAPI_SECRET_KEY`, or `~/.config/scnet-hashcat/config.json`
-  (same JSON shape as scnet-hpc; the scnet-hpc config file is read as a
-  fallback, so both skills can share one credential set).
-- On the cluster: a hashcat module under a personal modulefiles directory
-  (default `hashcat/7.1.2-dtk` in `/public/home/luql/modulefiles`; override
-  with `--module` / `--modulefiles` or `SCNET_HASHCAT_MODULEFILES`).
+- Default repository instructions are English; respond in the user's language.
+  Start with [references/quickstart.md](references/quickstart.md), or
+  [references/quickstart_CN.md](references/quickstart_CN.md) for Chinese.
+- Read `clusters/<cluster>.conf` before using static defaults. Select one region
+  and queue; query live queues/quotas before a real submission. Profile defaults
+  do not prove availability, module deployment or device visibility.
+- Reuse scnet-hpc environment credentials or its OS credential store. Configuration
+  under `$XDG_CONFIG_HOME` or `~/.config` holds non-secret choices only. Never ask
+  for secrets in chat. See [references/architecture.md](references/architecture.md).
+- Local Python 3.8+ and standard library suffice. Linux/macOS can also use the
+  Bash wrapper; Windows can call `python scripts/hc.py` directly.
+- `hashcat/7.1.2-dtk` is a deployment example. Set `--module`/`--modulefiles` for the
+  selected account. The module directory defaults to the resolved remote home,
+  never a maintainer's personal path. Heavy work must run on compute nodes.
 
-## Route only as needed
-
-- First run / quick start: `references/quickstart.md` (or `quickstart-en.md`)
-- Cross-node splitting strategy and the mask-engine defect:
-  `references/parallelization.md`
-- hashcat CVE guard details: `references/cve-precheck.md`
-- Everything that went wrong during development, with the fixes:
-  `references/pitfalls.md`
-
-Read only the reference the current operation needs.
-
-## Core workflow
+## Workflow
 
 ```bash
-scripts/hc doctor                                             # credentials + region + account
-scripts/hc precheck --hashes hashes.txt --mode 0              # CVE guard, read-only
-scripts/hc crack --hashes hashes.txt --dict rockyou.txt \
-  --nodes 4 --dcus-per-node 4 --wait                          # full pipeline
-scripts/hc status <job-id>                                    # progress + result files
-scripts/hc collect <job-id> --out ./results                   # potfiles, cracked, logs
+python3 scripts/hc.py doctor --region 11250
+python3 scripts/hc.py precheck --hashes hashes.txt --mode 0
+python3 scripts/hc.py crack --hashes hashes.txt --dict dict.txt --dry-run
+python3 scripts/hc.py crack --hashes hashes.txt --dict dict.txt --region 11250 --wait
+python3 scripts/hc.py status <job-id> --region 11250
+python3 scripts/hc.py collect <job-id> --region 11250 --out ./results
+python3 scripts/hc.py cancel <job-id> --region 11250
 ```
 
-`crack` resolves the remote run directory as `<work-dir>/<name>` (default
-`<home>/hashcat-runs`), uploads inputs under `inputs/`, writes results under
-`results/`, and prints the job id plus the exact `status`/`collect` commands.
-Pass `--dry-run` to see the plan without touching the cluster.
+Match nodes, DCUs, walltime, queue and input scope to the user's authorization.
+A pure local dry-run does not authenticate, upload or submit. Resolve live limits
+before uploading. Never silently retry submission. If waiting times out, report
+that the job may still be active and provide status/cancel commands.
 
-## Parallelization rules (verified on-cluster)
+Every submission gets a unique remote directory and `run.json` recording input
+roles and target. Keep the job ID, region, remote directory and collection command
+in the private run record. Do not publish hashes, recovered plaintexts, job IDs,
+personal paths or node names in public reports.
 
-- **Never use `--skip/--limit` keyspace splitting across nodes.** The mask
-  engine on this cluster drops mask tokens (`?l?l?l` yields keyspace 676, not
-  17576), so keyspace arithmetic is unreliable. Split the input *files*
-  instead: each rank runs `split -n l/N` on the shared dictionary or rules
-  file. This is attack-mode independent and verified working.
-- `--cpus` in the submit API is the **job total** (split across nodes);
-  `--dcus` is **per node** (max 4). The driver handles both.
-- The job `--command` only executes on the **first** node; multi-node fan-out
-  must go through `srun` inside the uploaded script (the driver does this,
-  with `-K0` so one bad rank cannot kill its siblings).
-- One hashcat process per node uses all DCUs allocated to that node
-  (4x DCU Z100 per compute node on this cluster; `--dcus-per-node 4`).
-- Mask attack (`-a 3`) runs single-node only; multi-node mask splitting is
-  skipped per rank with a log line until the mask defect is root-caused.
-- Each rank writes its own `pot.<rank>` and `cracked.<rank>`; the driver
-  merges potfiles into `pot.merged` and reports cracked/remaining.
-- A rank that fails (e.g. a node whose DCUs are not visible) records the
-  failure in `rank.<id>.kv` and exits 0, so sibling ranks still finish.
-  Check `ranks_failed` in the collected `summary.json`.
+## Distributed execution and evidence
 
-## Boundaries and evidence
+- One coordinator splits the dictionary or rules file **once**, before `srun`.
+  One rank runs per node; each writes separate potfile, output and logs.
+- With `--rules`, split rules; the dictionary stays shared. The old `--attack 1`
+  is a compatibility alias for this skill's rules mode, **not** hashcat's
+  combinator attack. Actual hashcat invocation is `-a 0 -r`.
+- Mask mode currently requires exactly one node; do not allocate idle nodes.
+  This is an implementation limit. `--keyspace` is a base-loop work counter,
+  not total candidates; a smaller value alone is not a mask defect.
+- Treat only hashcat exit 0/1 as normal. Keep sibling ranks running after a
+  rank fails, but propagate failure/missing ranks to the scheduler and collector.
+- Require accounting-confirmed completion **and** all expected successful rank
+  records. `FINALIZING`, missing summaries, timeout and partial results are not
+  success. A completed search can still have unrecovered hashes.
+- Input precheck is a conservative heuristic, not proof of parser safety.
+  PKZIP is rejected because structural validation is unsupported. Use patched
+  software and trusted inputs. A deliberate `--skip-precheck` bypasses all checks.
 
-- **Precheck every hash file before submission.** hashcat v7.1.2 has five
-  unreleased CVEs (disclosed 2026-05-01); the worst, CVE-2026-42483 (CVSS 9.8),
-  is a krb5 parser heap overflow reachable from a crafted hash file. Only
-  bypass with `--skip-precheck` when the input source is fully trusted.
-- Jobs consume account balance and scheduler quota. Confirm nodes, DCUs,
-  walltime, and queue before a real submit; use `--dry-run` first.
-- hashcat writes `hashcat.log` and `hashcat.dictstat2` into the **install
-  directory** of the binary, not the working directory. The module layout
-  keeps those files inside the module prefix; do not point `--module` at a
-  source/build tree you want untouched.
-- Report job id, remote run directory, and local output directory for every
-  run so the user can re-run `status`/`collect` independently.
-- Propagate the job's terminal state; do not claim success from a submit
-  response alone.
+Read only the relevant reference:
+
+- Splitting and mask semantics: [references/parallelization.md](references/parallelization.md)
+- Input-check limits and sources: [references/cve-precheck.md](references/cve-precheck.md)
+- Runtime diagnosis: [references/pitfalls.md](references/pitfalls.md)
+- SCNet relationship and vendor provenance: [references/architecture.md](references/architecture.md)
 
 ## Stable entrypoints
 
-- `scripts/hc` - local driver: `doctor`, `precheck`, `crack`, `status`,
-  `collect`, `split`, `version`.
-- `scripts/scnet_lite.py` - self-contained SCNet OpenAPI client
-  (`doctor`, `account`, `queues`, `limits`, `submit`, `job`, `wait`,
-  `cancel`, `logs`, `mkdir`, `ls`, `upload`, `download`, `rm`).
-- `scripts/remote/hc-node.sh` - per-node executor uploaded with the job
-  (srun fan-out, file splitting, per-rank potfiles).
-- `scripts/remote/hc-precheck.py` - hash file CVE guard.
-- `scripts/remote/hc-common.sh` - shared remote helpers.
+- `python3 scripts/hc.py`: doctor, precheck, crack, status, collect, cancel, split, version.
+- `scripts/hc`: Bash compatibility wrapper; `SCNET_HASHCAT_PYTHON` selects Python.
+- `scripts/scnet_lite.py`: OpenAPI adapter, derived from scnet-hpc; no SSH fallback.
+- `scripts/remote/hc-node.sh`: coordinator and rank executor; no remote Python dependency.

@@ -1,68 +1,69 @@
-# 快速开始（中文）
+# Quickstart
 
-## 1. 配置凭证（一次性）
+English | [中文](quickstart_CN.md)
 
-```bash
-export SCNET_OPENAPI_USER="luql"
-export SCNET_OPENAPI_ACCESS_KEY="<你的 AK>"
-export SCNET_OPENAPI_SECRET_KEY="<你的 SK>"
-```
+## Credentials and target
 
-或写入 `~/.config/scnet-hashcat/config.json`：
+If scnet-hpc is already configured, reuse its environment variables or OS
+credential store. Otherwise inject `SCNET_OPENAPI_USER`,
+`SCNET_OPENAPI_ACCESS_KEY`, `SCNET_OPENAPI_SECRET_KEY` in your own terminal.
+Never paste secrets into agent chat or commit them. No plaintext credential
+configuration is read. `$XDG_CONFIG_HOME/scnet-hpc/config.json` (or
+`~/.config/scnet-hpc/config.json`) can hold:
 
 ```json
-{
-  "user": "luql",
-  "access_key": "<AK>",
-  "secret_key": "<SK>"
-}
+{"backend":"openapi","openapi":{"default_region_id":"11250"}}
 ```
 
-> 该文件与 scnet-hpc 技能的配置文件格式一致；如果本机已有
-> `~/.config/scnet-hpc/config.json`，本技能会自动读取，无需重复配置。
-> Windows 下注意：命令涉及远程绝对路径时先
-> `export MSYS2_ARG_CONV_EXCL="*"`，否则 Git Bash 会把 `/public/...`
-> 改写成 Windows 路径。
+Region precedence: `--region`, `SCNET_HASHCAT_REGION`,
+`SCNET_OPENAPI_REGION_ID`, saved scnet-hashcat/scnet-hpc selection, then selected
+profile. This application supports OpenAPI only and never silently switches to SSH.
+Use scnet-hpc for credential setup, module deployment or shell diagnosis.
 
-## 2. 自检
+## Preflight and run
 
 ```bash
-scripts/hc doctor
+python3 scripts/hc.py doctor --region 11250
+python3 scripts/hc.py precheck --hashes tests/data/hashes.txt --mode 0
+python3 scripts/hc.py crack --hashes tests/data/hashes.txt --dict tests/data/dict.txt --dry-run
+python3 scripts/hc.py crack --hashes tests/data/hashes.txt --dict tests/data/dict.txt --region 11250 --nodes 2 --dcus-per-node 1 --walltime 00:03:00 --wait
 ```
 
-应看到区域、用户名、家目录、账户余额。
-
-## 3. 跑一个任务
+`--dry-run` is entirely local. Real submission queries live queue limits/quotas
+before upload. Default module: `hashcat/7.1.2-dtk`, modulefiles:
+`<resolved-remote-home>/modulefiles`. Override these when your deployment differs.
+A static module name does not verify the executable; each compute rank loads it
+and checks device visibility. Module installation is a separate scnet-hpc operation.
 
 ```bash
-scripts/hc crack --hashes hashes.txt --dict dict.txt --nodes 2 --wait
+python3 scripts/hc.py crack --hashes hashes.txt --dict dict.txt --rules best64.rule --nodes 2 --wait
+python3 scripts/hc.py crack --hashes hashes.txt --mask '?d?d' --nodes 1 --wait
+python3 scripts/hc.py status <job-id> --region 11250
+python3 scripts/hc.py collect <job-id> --region 11250 --out ./results
+python3 scripts/hc.py cancel <job-id> --region 11250
 ```
 
-- `--nodes 2`：申请 2 个计算节点，每节点一份词表切片
-- `--wait`：阻塞到作业结束并自动回收结果
-- 结果落在本地 `./hc-out-<作业号>/`：`pot.merged`（合并后的破解结果）、
-  `cracked.<rank>`、`rank.<n>.json`、`report.json`、`std.out`
+`--rules` selects rules splitting automatically; the old `--attack 1` is an
+application compatibility alias, not hashcat `-a 1`. `--extra-args` supports
+`-O`, `-w N`, `--runtime N`, `--quiet`, `--status`, `--status-timer N`, and
+`--backend-ignore-opencl`. Workflow-owned output/attack options cannot be overridden.
+A runtime-limited or aborted search reports incomplete/failure even if it found hashes.
 
-不带 `--wait` 时先记下作业号，随后：
+## Results and lifecycle
 
-```bash
-scripts/hc status <作业号>
-scripts/hc collect <作业号> --out ./results
-```
+Each run has a unique directory, role-separated inputs and `run.json`. Credentials
+are never included. Collect uses that manifest, not filename guessing. Outputs:
+`summary.json`, `rank.<n>.kv`, `rank.<n>.log`, `devices.<n>.txt`, `pot.<n>`,
+`pot.merged`, `cracked.<n>`, `report.json`, and available scheduler logs.
+Outputs contain sensitive recovery data; keep them private. Plaintexts are not
+printed automatically.
 
-## 4. 常用变体
+`report.json` records the actual job ID, target, scheduler state and rank completeness.
+Recovery counts use unique input lines matched to outfile-format 1; format
+normalization can undercount. Raw potfiles remain available for verification.
+An exhausted search is successful execution, even with remaining hashes.
 
-```bash
-# 规则攻击（跨节点切规则文件）
-scripts/hc crack --hashes h.txt --dict rockyou.txt --rules best64.rule \
-  --attack 1 --nodes 4 --wait
-
-# 掩码攻击（单节点；本环境掩码 keyspace 不可靠，勿跨节点切）
-scripts/hc crack --hashes h.txt --mask '?u?l?l?l?l?d?d?d?d' --attack 3 --nodes 1
-
-# 只预览不提交
-scripts/hc crack --hashes h.txt --dict d.txt --nodes 4 --dry-run
-
-# 非 MD5 哈希
-scripts/hc crack --hashes h.txt --dict d.txt --mode 1000 --wait
-```
+An existing nonempty output directory requires `--cover`; this replaces managed
+artifacts and rebuilds the merge so stale results do not inflate it.
+`FINALIZING` waits for scheduler accounting. `--wait-timeout` defaults to 900 seconds;
+if it expires, use the printed status/cancel commands. It does not cancel the job.

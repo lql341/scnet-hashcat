@@ -1,39 +1,16 @@
 #!/usr/bin/env python3
-"""hc-precheck.py - validate a hash file before hashcat ever reads it.
+"""Conservative hash-input hygiene checks, not a vulnerability scanner.
 
-hashcat v7.1.2 has five unreleased CVEs (disclosed 2026-05-01), three of which
-are reachable purely by feeding a crafted hash file:
-
-  CVE-2026-42483 (CVSS 9.8)  krb5* parser heap overflow -> RCE/crash
-  CVE-2026-42484             PKZIP (17200/17210/17220/17225/17230) parser
-                             heap overflow
-  CVE-2026-68768             outfile_write() heap overflow
-
-This precheck rejects the syntactic shapes those bugs need. It is a guard,
-not a proof: only feed hash files you generated or trust.
-
-Checks (always on):
-  * binary content / NUL or control bytes in lines
-  * lines longer than --max-line (default 8192)
-  * empty or whitespace-only lines (reported, not fatal)
-
-Checks (shape aware):
-  * $krb5tgs$/$krb5pa$/$krb5asrep$ lines: every $-delimited field must be
-    <= --max-field (default 511) bytes - the CVE-2026-42483 overflow is
-    driven by an over-long account_info field.
-  * PKZIP modes (--mode 17200/17210/17220/17225/17230): the $zip2$ payload
-    must be base64-ish and bounded; over-long payloads are rejected.
-  * restore/outfile option injection (CVE-2026-68766) only applies to
-    restore files, not hash files - nothing to check here, noted for docs.
-
-Exit status: 0 clean, 1 rejected lines found, 2 usage/IO error.
+Checks line/field bounds and raw control bytes. Kerberos bounds may reject
+legitimate long ticket fields. PKZIP parser safety is not implemented: reject
+those inputs rather than treating ZIP2/base64 as PKZIP validation. Use a patched
+build and trusted inputs; --skip-precheck bypasses this entire heuristic.
+Exit status: 0 accepted, 1 rejected, 2 usage/IO error.
 """
 
 from __future__ import annotations
 
 import argparse
-import base64
-import binascii
 import json
 import sys
 
@@ -50,7 +27,7 @@ def check_line(line: str, lineno: int, mode: int | None, max_line: int, max_fiel
 
     # Control bytes (tab allowed) indicate binary or crafted content.
     for char in line:
-        if ord(char) < 32 and char != "\t":
+        if (ord(char) < 32 and char != "\t") or ord(char) == 127:
             problems.append(f"line {lineno}: control byte 0x{ord(char):02x}")
             break
 
@@ -67,21 +44,8 @@ def check_line(line: str, lineno: int, mode: int | None, max_line: int, max_fiel
                 )
                 break
 
-    if mode in PKZIP_MODES and lower.startswith("$zip2$"):
-        # PKZIP lines look like: $zip2$*0*3*...*<base64 blobs>. Bound each blob.
-        blobs = [part for part in line.split("*") if len(part) > 64]
-        for blob in blobs:
-            try:
-                decoded = base64.b64decode(blob + "=" * (-len(blob) % 4), validate=False)
-            except (binascii.Error, ValueError):
-                problems.append(f"line {lineno}: PKZIP blob is not valid base64")
-                break
-            if len(decoded) > 1024 * 1024:
-                problems.append(
-                    f"line {lineno}: PKZIP blob decodes to >1 MiB "
-                    "(CVE-2026-42484 shape)"
-                )
-                break
+    if mode in PKZIP_MODES or lower.startswith(("$pkzip$", "$pkzip2$")):
+        problems.append(f"line {lineno}: PKZIP structural safety is unsupported (CVE-2026-42484); use a patched build with trusted input")
 
     return problems
 
@@ -106,8 +70,17 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps({"error": "file contains NUL bytes; not a text hash file"}))
         return 1
 
-    text = raw.decode("utf-8", "replace")
-    lines = text.splitlines()
+    if any(byte < 32 and byte not in (9, 10, 13) or byte == 127 for byte in raw):
+        print(json.dumps({"error": "file contains control bytes"}))
+        return 1
+    try:
+        text = raw.decode("utf-8")
+    except UnicodeDecodeError:
+        print(json.dumps({"error": "hash file must be UTF-8 text"}))
+        return 1
+    lines = text.split("\n")
+    if lines and lines[-1] == "":
+        lines.pop()
     problems: list[str] = []
     empty = 0
     prefixes: dict[str, int] = {}
@@ -116,7 +89,7 @@ def main(argv: list[str] | None = None) -> int:
         if not line.strip():
             empty += 1
             continue
-        stripped = line.strip()
+        stripped = line[:-1] if line.endswith("\r") else line
         prefix = stripped.split("$")[1] if stripped.startswith("$") and "$" in stripped[1:] else "(bare)"
         key = prefix.rstrip("0123456789") if prefix != "(bare)" else "(bare)"
         prefixes[key] = prefixes.get(key, 0) + 1
@@ -129,8 +102,12 @@ def main(argv: list[str] | None = None) -> int:
         "hash_types": prefixes,
         "rejected": len(problems),
         "problems": problems[:50],
-        "ok": not problems,
+        "ok": not problems and bool(prefixes),
     }
+    if not prefixes:
+        problems.append("hash file has no non-empty hashes")
+        report["rejected"] = len(problems)
+        report["problems"] = problems[:50]
     if args.json:
         print(json.dumps(report, indent=2))
     else:

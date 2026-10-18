@@ -66,8 +66,8 @@ def main() -> int:
         zip_ok = root / "zip-ok.txt"
         zip_ok.write_text("$zip2$*0*3*2*binary*" + "A" * 100 + "*" + "C" * 100 + "\n", encoding="utf-8")
         rc, _ = run_precheck(zip_ok, 17200)
-        if rc != 0:
-            failures.append(f"bounded PKZIP line should pass, got rc={rc}")
+        if rc != 1:
+            failures.append(f"unsupported PKZIP validation must reject, got rc={rc}")
 
     if failures:
         print("FAILED:")

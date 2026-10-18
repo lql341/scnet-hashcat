@@ -1,22 +1,23 @@
 # Changelog
 
+## 0.2.0 (2026-10-18)
+
+- Align application layout, English/Chinese docs, XDG region selection and secure
+  credential discovery with scnet-hpc; record pinned vendor provenance.
+- Add a portable Python driver, retaining `scripts/hc` as a Bash wrapper.
+- Make dry-run fully offline; validate queue/quota before upload, use unique runs,
+  role-separated inputs, quoted argument vectors and a persistent run manifest.
+- Split once before fan-out; isolate logs/sessions, detect missing/failed ranks,
+  handle negative/abort exit codes and old Bash empty-array behavior.
+- Fix efile pagination with start/limit and preserve region through collection.
+- Confirm completion through accounting; propagate wait/collection failure, keep
+  recovery artifacts private, exclude stale merged potfiles and count unique hashes.
+- Correct mask keyspace interpretation and unsupported CVE protection claims;
+  reject unsupported PKZIP validation rather than checking the wrong format.
+- Add offline behavioral tests and bounded Kunshan synthetic-workload validation.
+
 ## 0.1.0 (2026-10-18)
 
-Initial release.
-
-- Self-contained SCNet OpenAPI client (`scripts/scnet_lite.py`, subset of
-  scnet-hpc, MIT): credentials, region/center discovery, submit, job status,
-  wait, cancel, log tail, efile list/mkdir/upload (chunked)/download/remove,
-  account, queues, limits.
-- Local driver `scripts/hc`: `doctor`, `precheck`, `crack`, `status`,
-  `collect`, `split`, `version`; `--dry-run` planning, `--wait` blocking mode.
-- Remote executor `scripts/remote/hc-node.sh`: srun fan-out across nodes,
-  dictionary/rules file splitting (`split -n l/N`), per-rank potfiles and
-  cracked outputs, per-rank JSON summaries, merged report.
-- CVE precheck `scripts/remote/hc-precheck.py` for hashcat v7.1.2
-  unreleased CVEs (krb5 field-length, PKZIP blob bounds, line/control-byte
-  limits).
-- Verified on-cluster: multi-node dictionary attack, 4 DCU per node, module
-  load, result merge; mask attack restricted to single node due to the
-  cluster's mask-engine token-dropping defect (see
-  `references/parallelization.md`).
+Initial distributed hashcat skill with an OpenAPI adapter, input precheck, Bash
+orchestration, multi-node execution and result collection. Earlier mask-defect
+and CVE coverage claims are superseded by the corrected 0.2.0 documentation.

@@ -13,8 +13,9 @@ No third-party dependencies; Python 3.8+ standard library only.
 
 Credentials, in resolution order:
   1. SCNET_OPENAPI_USER / SCNET_OPENAPI_ACCESS_KEY / SCNET_OPENAPI_SECRET_KEY
-  2. ~/.config/scnet-hashcat/config.json   {"user","access_key","secret_key"}
-  3. ~/.config/scnet-hpc/config.json      (shared with the scnet-hpc skill)
+  2. OS credential store, service scnet-hpc-openapi (shared with scnet-hpc)
+
+config.json contains only non-secret choices, including default_region_id.
 
 Every command prints a JSON object to stdout. Errors go to stderr with a
 non-zero exit status.
@@ -30,13 +31,15 @@ import os
 import sys
 import time
 import uuid
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Mapping
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlencode, urlsplit, urlunsplit
 from urllib.request import Request, urlopen
 
-VERSION = "0.1.0"
+from scnet_credentials import CredentialError, load_openapi_credentials
+from scnet_version import VERSION
 USER_AGENT = f"scnet-hashcat/{VERSION}"
 
 DEFAULT_AUTH_BASE = "https://api.scnet.cn"
@@ -69,8 +72,23 @@ TERMINAL_STATES = {
     "ABNORMAL",
     "TIMEOUT",
     "NODE_ERROR",
-    "OTHER",
 }
+
+
+def default_region():
+    explicit = env("SCNET_HASHCAT_REGION") or env("SCNET_OPENAPI_REGION_ID")
+    if explicit:
+        return explicit
+    root = Path(env("XDG_CONFIG_HOME") or (Path.home() / ".config"))
+    for app in ("scnet-hashcat", "scnet-hpc"):
+        try:
+            data = json.loads((root / app / "config.json").read_text(encoding="utf-8"))
+            value = (data.get("openapi") or {}).get("default_region_id")
+            if value:
+                return str(value)
+        except (OSError, ValueError, AttributeError):
+            continue
+    return None
 
 
 class ClientError(Exception):
@@ -226,7 +244,9 @@ class Client:
                 payload = json.loads(response.read().decode("utf-8"))
         except (HTTPError, URLError, OSError, json.JSONDecodeError) as exc:
             raise ClientError(f"OpenAPI multipart upload failed: {exc}")
-        if not isinstance(payload, dict) or str(payload.get("code", "")) != "0":
+        if not isinstance(payload, dict):
+            raise ClientError("OpenAPI multipart response must be a JSON object")
+        if str(payload.get("code", "")) != "0":
             raise ClientError(
                 f"SCNet OpenAPI error {payload.get('code')}: {payload.get('msg')}"
             )
@@ -234,59 +254,20 @@ class Client:
 
     # -- credentials -------------------------------------------------------
 
-    @staticmethod
-    def _config_file_credentials() -> dict[str, str]:
-        for candidate in (
-            Path.home() / ".config" / "scnet-hashcat" / "config.json",
-            Path.home() / ".config" / "scnet-hpc" / "config.json",
-        ):
-            try:
-                payload = json.loads(candidate.read_text(encoding="utf-8"))
-            except (OSError, ValueError):
-                continue
-            if not isinstance(payload, dict):
-                continue
-            openapi = payload.get("openapi")
-            if not isinstance(openapi, dict):
-                openapi = payload
-            user = openapi.get("user")
-            access_key = openapi.get("access_key")
-            secret_key = openapi.get("secret_key")
-            if user and access_key and secret_key:
-                return {
-                    "user": str(user),
-                    "access_key": str(access_key),
-                    "secret_key": str(secret_key),
-                }
-        return {}
-
     def _credentials(self) -> dict[str, str]:
-        config = self._config_file_credentials()
-        user = env("SCNET_OPENAPI_USER") or config.get("user")
-        access_key = env("SCNET_OPENAPI_ACCESS_KEY") or config.get("access_key")
-        secret_key = env("SCNET_OPENAPI_SECRET_KEY") or config.get("secret_key")
-        missing = [
-            name
-            for name, value in (
-                ("SCNET_OPENAPI_USER", user),
-                ("SCNET_OPENAPI_ACCESS_KEY", access_key),
-                ("SCNET_OPENAPI_SECRET_KEY", secret_key),
-            )
-            if not value
-        ]
-        if missing:
-            raise ClientError(
-                "OpenAPI credentials are not configured; set "
-                + ", ".join(missing)
-                + " or create ~/.config/scnet-hashcat/config.json"
-            )
-        return {"user": str(user), "access_key": str(access_key), "secret_key": str(secret_key)}
+        try:
+            credentials, _ = load_openapi_credentials()
+        except CredentialError as exc:
+            raise ClientError(str(exc)) from None
+        if not credentials:
+            raise ClientError("OpenAPI credentials missing; configure scnet-hpc or inject USER/ACCESS_KEY/SECRET_KEY environment variables. Never put secrets in config.json.")
+        return credentials
 
     # -- token / region cache (shared with scnet-hpc on purpose) -----------
 
     @staticmethod
     def _token_cache_paths() -> tuple[Path, Path]:
-        root = Path(env("XDG_CACHE_HOME", str(Path.home() / ".cache"))) / "scnet-hpc"
+        root = Path(env("XDG_CACHE_HOME") or (Path.home() / ".cache")) / "scnet-hpc"
         return root / "openapi-regions.json", root / "openapi-regions.lock"
 
     @staticmethod
@@ -377,7 +358,7 @@ class Client:
             return self._regions_cache
         direct_token = env("SCNET_OPENAPI_TOKEN")
         if direct_token:
-            region_id = env("SCNET_OPENAPI_REGION_ID") or ""
+            region_id = default_region() or ""
             self._regions_cache = [
                 {
                     "clusterId": region_id,
@@ -644,23 +625,44 @@ class Client:
 
     def job(self, job_id: str, region: str | None) -> dict[str, Any]:
         ctx = self.hpc_context(region)
-        data = self.request(
-            "GET",
-            service_endpoint(ctx["hpc_url"], "hpc", f"/openapi/v2/jobs/{quote(job_id)}"),
-            token=ctx["token"],
-        )
+        try:
+            data = self.request("GET", service_endpoint(ctx["hpc_url"], "hpc", f"/openapi/v2/jobs/{quote(job_id)}"), token=ctx["token"])
+        except ClientError as exc:
+            if not any(s in str(exc).lower() for s in ("404", "not found", "does not exist", "不存在", "unexpected data shape")):
+                raise
+            data = None
         item = data if isinstance(data, dict) else {}
+        state = item.get("jobStatus") or item.get("jobState") or item.get("state")
+        finalizing = False
+        source = "realtime"
+        if not item.get("jobId") or state in ("statC", "COMPLETED"):
+            end = datetime.now(timezone(timedelta(hours=8)))
+            params = {"strClusterNameList": ctx["scheduler_id"], "timeType": "CUSTOM",
+                      "isQueryByQueueTime": "false", "start": 0, "limit": 1, "jobId": job_id,
+                      "startTime": (end - timedelta(days=30)).strftime("%Y-%m-%d %H:%M:%S"),
+                      "endTime": end.strftime("%Y-%m-%d %H:%M:%S")}
+            history = self.request("GET", service_endpoint(ctx["hpc_url"], "hpc", "/openapi/v2/historyjobs") + "?" + urlencode(params), token=ctx["token"])
+            rows = (history.get("items") or history.get("list") or history.get("rows") or []) if isinstance(history, dict) else (history or [])
+            match = next((row for row in rows if str(row.get("jobId") or row.get("job_id")) == job_id), None)
+            if match:
+                item = {**item, **{k: v for k, v in match.items() if v is not None and v != ""}}
+                source = "history"
+            elif state in ("statC", "COMPLETED"):
+                finalizing = True
+            elif not item:
+                raise ClientError("job not found in realtime or recent accounting history")
         raw_state = (
             item.get("jobStatus") or item.get("jobState") or item.get("state") or ""
         )
         return {
             "job_id": str(item.get("jobId") or item.get("job_id") or job_id),
             "name": item.get("jobName") or item.get("name"),
-            "state": STATUS_MAP.get(str(raw_state), raw_state),
+            "state": "FINALIZING" if finalizing else STATUS_MAP.get(str(raw_state), raw_state),
+            "source": source,
             "raw_state": raw_state,
             "queue": item.get("queue") or item.get("queueName"),
-            "nodes": item.get("nodeNumReq") or item.get("nodeUsed"),
-            "cpus": item.get("procNumReq") or item.get("procNumUsed"),
+            "nodes": item.get("nodeNumReq") or item.get("nodeUsed") or item.get("nodeNum") or item.get("nodect"),
+            "cpus": item.get("procNumReq") or item.get("procNumUsed") or item.get("nproc") or item.get("jobProcNum"),
             "dcus": item.get("dcuNumReq") or item.get("dcuNumUsed"),
             "elapsed": item.get("jobRunTime") or item.get("jobWalltimeUsed"),
             "started_at": item.get("jobStartTime"),
@@ -670,6 +672,7 @@ class Client:
             "reason": item.get("reason"),
             "work_dir": item.get("workDir") or item.get("workdir"),
             "stdout": item.get("outputPath"),
+            "stderr": item.get("errorPath"),
             "raw": item,
         }
 
@@ -761,18 +764,20 @@ class Client:
 
     def ls(self, path: str | None, region: str | None, limit: int = 200) -> dict[str, Any]:
         efile_url, token = self.efile_context(region)
-        params: dict[str, Any] = {"pageNum": 1, "pageSize": limit}
+        params: dict[str, Any] = {"start": 0, "limit": limit, "order": "asc", "orderBy": "name"}
         if path:
             params["path"] = path
-        data = self.request(
-            "GET",
-            service_endpoint(efile_url, "efile", "/openapi/v2/file/list")
-            + "?"
-            + urlencode(params),
-            token=token,
-        )
-        if not isinstance(data, dict):
-            return {"raw": data}
+        files = []
+        while True:
+            data = self.request("GET", service_endpoint(efile_url, "efile", "/openapi/v2/file/list") + "?" + urlencode(params), token=token)
+            if not isinstance(data, dict):
+                raise ClientError("file listing returned an unexpected data shape")
+            batch = data.get("fileList") or []
+            files.extend(batch)
+            total = data.get("total")
+            if not batch or (total is not None and len(files) >= int(total)) or (total is None and len(batch) < limit):
+                break
+            params["start"] = len(files)
         return {
             "path": data.get("path"),
             "total": data.get("total"),
@@ -785,7 +790,7 @@ class Client:
                     "modified_at": item.get("lastModifiedTime"),
                     "permission": item.get("permission"),
                 }
-                for item in data.get("fileList") or []
+                for item in files
                 if isinstance(item, dict)
             ],
         }
@@ -932,7 +937,7 @@ def build_parser() -> argparse.ArgumentParser:
         prog="scnet_lite",
         description="Minimal self-contained SCNet OpenAPI client (scnet-hashcat)",
     )
-    parser.add_argument("--region", default=env("SCNET_OPENAPI_REGION_ID"))
+    parser.add_argument("--region", default=default_region())
     parser.add_argument("--timeout", type=int, default=60)
     sub = parser.add_subparsers(dest="op", required=True)
 
@@ -1059,6 +1064,12 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps({"error": str(exc)}), file=sys.stderr)
         return 1
     print(json.dumps(payload, ensure_ascii=False, indent=2))
+    if args.op == "wait" and (
+        payload.get("state") != "COMPLETED"
+        or str(payload.get("exit_code")) not in ("None", "0", "0:0")
+        or str(payload.get("platform_exit_status")) not in ("None", "", "0")
+    ):
+        return 1
     return 0
 
 
