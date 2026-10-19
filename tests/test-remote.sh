@@ -2,10 +2,10 @@
 # Behavioral remote tests with fake hashcat/srun; no scheduler or credentials.
 set -eu
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-TMP="$ROOT/.test-remote-$$"
+TMP="$(mktemp -d "${TMPDIR:-/tmp}/scnet-hashcat-test-remote.XXXXXX")"
 mkdir -p "$TMP/bin"
 cleanup() {
-  case "$TMP" in "$ROOT"/.test-remote-*) rm -rf -- "$TMP" ;; *) exit 1 ;; esac
+  case "$TMP" in "${TMPDIR:-/tmp}"/scnet-hashcat-test-remote.*|/tmp/scnet-hashcat-test-remote.*) rm -rf -- "$TMP" ;; *) exit 1 ;; esac
 }
 trap cleanup EXIT
 export HC_TEST_BIN="$TMP/bin"
@@ -43,7 +43,7 @@ export PATH="$HC_TEST_BIN:$PATH"
 printf 'hash\n' > "$TMP/hash"
 printf 'a\nb\nc\nd\n' > "$TMP/dict"
 run() {
-  bash "$ROOT/scripts/remote/hc-node.sh" --hashes "$TMP/hash" --dict "$TMP/dict" \
+  env -u BASH_ENV -u ENV -u MODULESHOME bash "$ROOT/scripts/remote/hc-node.sh" --hashes "$TMP/hash" --dict "$TMP/dict" \
     --module fake --outdir "$TMP/$1" --nodes "$2"
 }
 run success 2

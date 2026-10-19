@@ -45,6 +45,7 @@ if [ "$RANK_MODE" = 1 ]; then
   }
   trap finish EXIT
   fail() { ERROR="$1"; echo "$ERROR" >&2; exit 1; }
+  fail_prerequisite() { RC=3; ERROR="$1"; echo "prerequisite: $ERROR" >&2; exit 3; }
   log "rank=$RANK allocated_devices=${HIP_VISIBLE_DEVICES:-unset}"
   MYDICT="$DICT" MYRULES="$RULES"
   if [ "$NODES" -gt 1 ]; then
@@ -53,11 +54,14 @@ if [ "$RANK_MODE" = 1 ]; then
     [ -f "$PART" ] || fail 'slice missing'
     if [ ! -s "$PART" ]; then RC=1; log 'empty slice: no work'; exit 0; fi
   fi
-  type module >/dev/null 2>&1 || fail 'module function unavailable; use a login shell'
-  if [ -n "$MODULEFILES" ]; then module use "$MODULEFILES" || fail 'module use failed'; fi
-  module load "$MODULE" || fail 'module load failed'
-  HC=$(command -v hashcat) || fail 'hashcat not found after module load'
-  "$HC" -I > "$OUTDIR/devices.$RANK.txt" 2>&1 || fail 'device enumeration failed'
+  type module >/dev/null 2>&1 || fail_prerequisite 'module function unavailable; use a login shell'
+  if [ -n "$MODULEFILES" ]; then
+    [ -d "$MODULEFILES" ] || fail_prerequisite "modulefiles directory missing: $MODULEFILES"
+    module use "$MODULEFILES" || fail_prerequisite 'module use failed'
+  fi
+  module load "$MODULE" || fail_prerequisite "module load failed: $MODULE"
+  HC=$(command -v hashcat) || fail_prerequisite 'hashcat not found after module load'
+  "$HC" -I > "$OUTDIR/devices.$RANK.txt" 2>&1 || fail_prerequisite 'device enumeration failed'
   DEVICES=$(grep -c 'Backend Device ID' "$OUTDIR/devices.$RANK.txt" || true)
   [ "$DEVICES" -ge "$EXPECTED" ] || fail 'fewer devices visible than requested'
   ARGS=(-a 0 -m "$MODE" "$HASHES")

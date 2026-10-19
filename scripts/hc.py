@@ -36,6 +36,20 @@ def profile(name):
             if not sep or len(tokens) != 1:
                 raise ClientError("profile must contain simple KEY=value assignments")
             values[key] = value
+    stack_name = values.get("STACK_PROFILE")
+    if stack_name:
+        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", stack_name):
+            raise ClientError("invalid stack profile name")
+        stack_path = ROOT / "stacks" / (stack_name + ".json")
+        try:
+            stack = json.loads(stack_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            raise ClientError("invalid stack profile: " + stack_name) from exc
+        if not isinstance(stack, dict) or not isinstance(stack.get("module"), str) or not isinstance(stack.get("signature"), dict):
+            raise ClientError("stack profile requires module and signature")
+        values["HASHCAT_MODULE"] = stack["module"]
+        values["STACK_ID"] = str(stack.get("id", stack_name))
+        values["STACK_SIGNATURE"] = stack["signature"]
     return values
 
 
@@ -156,12 +170,31 @@ def make_plan(args):
     name = args.name or ("hc-" + time.strftime("%Y%m%d-%H%M%S"))
     if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,99}", name):
         raise ClientError("--name must be a simple job label")
-    return {"cluster": args.cluster, "region_id": str(region), "queue": args.queue or conf["PARTITION"],
+    queue = args.queue or conf["PARTITION"]
+    selected_module = args.module or conf["HASHCAT_MODULE"]
+    signature = conf.get("STACK_SIGNATURE")
+    stack_id = conf.get("STACK_ID")
+    if args.module and args.module != conf["HASHCAT_MODULE"]:
+        signature, stack_id = None, None
+    elif signature:
+        signature = json.loads(json.dumps(signature))
+        signature["platform"] = {
+            **signature.get("platform", {}),
+            "adapter": "scnet-openapi",
+            "region": str(region),
+            "cluster": args.cluster,
+            "queue": queue,
+        }
+    return {"cluster": args.cluster, "region_id": str(region), "queue": queue,
             "name": name, "nodes": args.nodes, "cpus_per_node": args.cpus_per_node,
             "cpus": args.nodes * args.cpus_per_node, "dcus_per_node": args.dcus_per_node,
             "walltime": walltime, "attack": attack, "mode": args.mode, "mask": args.mask,
-            "module": args.module or conf["HASHCAT_MODULE"], "modulefiles": args.modulefiles,
+            "module": selected_module, "modulefiles": args.modulefiles,
             "extra_args": extra_arguments(args.extra_args),
+            "stack_id": stack_id,
+            "stack_signature": signature,
+            "stack_status": "reference" if signature else "unverified",
+            "precheck": {"skipped": bool(args.skip_precheck)},
             "work_base": safe_remote(args.work_dir) if args.work_dir else "<remote-home>/hashcat-runs",
             "input_roles": {k: str(v.resolve()) for k, v in {"hashes": args.hashes, "dict": args.dict, "rules": args.rules}.items() if v}}
 

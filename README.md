@@ -2,7 +2,7 @@
 
 English | [中文](README_CN.md)
 
-Current release: 0.2.0
+Current release: 0.2.1
 
 Run [hashcat](https://hashcat.net/hashcat/) offline password-recovery workloads on
 [SCNet](https://www.scnet.cn) cluster environments. This application skill follows
@@ -80,6 +80,8 @@ cluster profile, region and queue for your SCNet environment.
 Explicit options override defaults. Queue/quotas are queried before upload and
 submission. Static profile capacity is not current free capacity. An installed
 hashcat module is an account prerequisite, not installed by this skill.
+Read [runtime prerequisites](references/prerequisites.md) for the validated
+six-axis stack and failure diagnosis before a real submission.
 
 Dictionary/rules workloads support multiple nodes. Files are split once before
 fan-out; rank logs and potfiles stay separate. Masks require one node. Only

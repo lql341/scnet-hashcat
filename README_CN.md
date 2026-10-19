@@ -2,7 +2,7 @@
 
 [English](README.md) | 中文
 
-当前版本：0.2.0
+当前版本：0.2.1
 
 在[超算互联网（SCNet）](https://www.scnet.cn)集群环境运行 [hashcat](https://hashcat.net/hashcat/)
 离线密码恢复任务。应用 skill 与 [scnet-hpc](https://github.com/lql341/scnet-hpc)
@@ -71,6 +71,8 @@ python3 scripts/hc.py collect <作业号> --region "<region-id>" --out ./results
 profile、区域和队列。
 显式参数覆盖默认值；上传和提交前查询实时队列及配额。profile 的静态容量不代表
 当前空闲资源。用户须已部署适用的 hashcat module，本 skill 不自动安装集群软件。
+真实提交前先阅读[运行前置条件](references/prerequisites_CN.md)，其中记录已验证的
+六轴栈签名和缺少前置环境时的诊断方式。
 
 字典/规则支持多节点：协调进程只切分一次，每个 rank 单独记录日志和 potfile。
 掩码限定单节点。只有历史记账确认完成且所有预期 rank 正常结束，才返回成功。

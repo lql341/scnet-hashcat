@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.1 (2026-10-19)
+
+- Align the R1 cluster profile and operational documentation with the
+  `hashcat/7.1.2-dtk26.04-z100` module identity.
+- Record the complete DTK 26.04 / Z100 stack signature in the validation report.
+
 ## 0.2.0 (2026-10-18)
 
 - Identify this application as scnet-app's operational benchmark, with bilingual

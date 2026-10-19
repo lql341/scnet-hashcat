@@ -74,7 +74,7 @@ python scripts/hc.py doctor --region "<region-id>"
 
 ## 先核对远端 module，再跑小作业
 
-安装 skill 不会部署 hashcat。默认使用 `hashcat/7.1.2-dtk` 和
+安装 skill 不会部署 hashcat。默认使用 `hashcat/7.1.2-dtk26.04-z100` 和
 `<动态解析的远端主目录>/modulefiles`，不保证新账户已有。
 站点使用其他模块/目录时，给 crack 显式传入
 `--module <真实模块名> --modulefiles <远端绝对目录>`。
@@ -137,7 +137,7 @@ python3 scripts/hc.py crack --hashes tests/data/hashes.txt --dict tests/data/dic
 ```
 
 `--dry-run` 完全本地执行。真实提交在上传前检查实时队列限制和用户配额。
-默认 module 为 `hashcat/7.1.2-dtk`，modulefiles 位于动态解析的远端主目录下，
+默认 module 为 `hashcat/7.1.2-dtk26.04-z100`，modulefiles 位于动态解析的远端主目录下，
 可用 `--module`、`--modulefiles` 覆盖。静态模块名不证明可用；每个计算 rank
 加载模块后检查设备。模块部署是独立的 scnet-hpc 操作。
 

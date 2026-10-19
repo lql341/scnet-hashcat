@@ -84,7 +84,7 @@ python scripts/hc.py doctor --region "<region-id>"
 ## Check the remote module, then run a small job
 
 Installing the skill does not deploy hashcat. Default deployment values are
-`hashcat/7.1.2-dtk` and `<resolved-remote-home>/modulefiles`; neither is guaranteed
+`hashcat/7.1.2-dtk26.04-z100` and `<resolved-remote-home>/modulefiles`; neither is guaranteed
 to exist for a new account. If the site supplies another module/directory, pass
 `--module <real-module-name> --modulefiles <absolute-remote-directory>` to crack.
 The directory must exist; module names alone do not establish patch status.
@@ -153,7 +153,7 @@ python3 scripts/hc.py crack --hashes tests/data/hashes.txt --dict tests/data/dic
 ```
 
 `--dry-run` is entirely local. Real submission queries live queue limits/quotas
-before upload. Default module: `hashcat/7.1.2-dtk`, modulefiles:
+before upload. Default module: `hashcat/7.1.2-dtk26.04-z100`, modulefiles:
 `<resolved-remote-home>/modulefiles`. Override these when your deployment differs.
 A static module name does not verify the executable; each compute rank loads it
 and checks device visibility. Module installation is a separate scnet-hpc operation.

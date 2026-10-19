@@ -25,6 +25,17 @@ class DriverTests(unittest.TestCase):
         with patch.object(lite.Client, "request", side_effect=AssertionError("network")), patch.object(lite.Client, "upload", side_effect=AssertionError("upload")), redirect_stdout(io.StringIO()):
             self.assertEqual(hc.crack(lite.Client(), self.args("--dry-run")), 0)
 
+    def test_stack_profile_is_bound_to_actual_target_and_override_is_unverified(self):
+        plan = hc.make_plan(self.args("--region", "custom", "--queue", "other", "--skip-precheck"))
+        self.assertEqual(plan["module"], "hashcat/7.1.2-dtk26.04-z100")
+        self.assertEqual(plan["stack_signature"]["platform"]["region"], "custom")
+        self.assertEqual(plan["stack_signature"]["platform"]["queue"], "other")
+        self.assertEqual(plan["stack_status"], "reference")
+        self.assertTrue(plan["precheck"]["skipped"])
+        overridden = hc.make_plan(self.args("--module", "hashcat/other", "--skip-precheck"))
+        self.assertIsNone(overridden["stack_signature"])
+        self.assertEqual(overridden["stack_status"], "unverified")
+
     def test_invalid_attack_and_resources_before_network(self):
         for options in (("--attack", "1"), ("--dcus-per-node", "5"), ("--mask", "?d"), ("--name", "../old"), ("--walltime", "00:99:00")):
             with self.subTest(options=options), redirect_stdout(io.StringIO()), self.assertRaises(lite.ClientError):

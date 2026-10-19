@@ -1,0 +1,24 @@
+{
+  "id": "r1-centos7-gcc16-dtk2604-z100-ompi5011",
+  "status": "reference",
+  "module": "hashcat/7.1.2-dtk26.04-z100",
+  "signature": {
+    "system": {"name": "centos7.6", "glibc": "2.17"},
+    "toolchain": {"gcc": "16.2.0", "cmake": "4.4.3"},
+    "backend": {
+      "kind": "dcu",
+      "runtime": "dtk",
+      "version": "26.04",
+      "target": "hygon-z100",
+      "arch": "gfx906"
+    },
+    "mpi": {"vendor": "openmpi", "version": "5.0.11"},
+    "framework": {"name": "none"},
+    "platform": {
+      "adapter": "scnet-openapi",
+      "region": "11250",
+      "cluster": "keshell",
+      "queue": "kshdnormal"
+    }
+  }
+}

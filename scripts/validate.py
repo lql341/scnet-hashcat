@@ -32,5 +32,22 @@ manifest = json.loads((ROOT / "scripts/vendor-manifest.json").read_text())
 for name, info in manifest["files"].items():
     if hashlib.sha256((ROOT / name).read_bytes()).hexdigest() != info["sha256"]:
         failures.append("vendored helper drift: " + name)
+profile = (ROOT / "clusters/kseshell.conf").read_text(encoding="utf-8")
+if 'HASHCAT_MODULE="hashcat/7.1.2-dtk"' in profile:
+    failures.append("R1 profile still uses the pre-signature hashcat module name")
+match = re.search(r'^STACK_PROFILE="([^"]+)"$', profile, re.MULTILINE)
+if not match:
+    failures.append("cluster profile must select a stack profile")
+else:
+    stack_path = ROOT / "stacks" / (match.group(1) + ".json")
+    try:
+        stack = json.loads(stack_path.read_text(encoding="utf-8"))
+        signature = stack["signature"]
+        if (stack["module"] != "hashcat/7.1.2-dtk26.04-z100"
+                or signature["backend"]["version"] != "26.04"
+                or signature["backend"]["target"] != "hygon-z100"):
+            failures.append("R1 stack profile does not describe DTK 26.04 / Z100")
+    except (OSError, ValueError, KeyError, TypeError):
+        failures.append("R1 stack profile is missing or malformed")
 print("\n".join(failures) if failures else "packaging validation: all passed")
 sys.exit(bool(failures))

@@ -5,9 +5,22 @@ English | [中文](validation_CN.md)
 The recorded results apply only to the tested deployment, not all SCNet environments. Replace `<region-id>` with an authorized target when reproducing them.
 
 Validated 2026-10-18 in a selected SCNet cluster environment, using the account's
-existing `hashcat/7.1.2-dtk` module. Device evidence: HIP runtime, Device 66a1,
+existing `hashcat/7.1.2-dtk26.04-z100` module. Device evidence: HIP runtime, Device 66a1,
 16368 MB per DCU. All recovery inputs were synthetic; walltime was bounded to
 three minutes per job. No account hashes or external target data were used.
+
+The validated R1 stack signature is:
+
+```json
+{
+  "system": {"name": "centos7.6", "glibc": "2.17"},
+  "toolchain": {"gcc": "16.2.0", "cmake": "4.4.3"},
+  "backend": {"kind": "dcu", "runtime": "dtk", "version": "26.04", "target": "hygon-z100", "arch": "gfx906"},
+  "mpi": {"vendor": "openmpi", "version": "5.0.11"},
+  "framework": {"name": "none"},
+  "platform": {"adapter": "scnet-openapi", "region": "11250", "cluster": "keshell", "queue": "kshdnormal"}
+}
+```
 
 | Case | Allocation | Expected recovery | Observed | Evidence |
 | --- | --- | --- | --- | --- |

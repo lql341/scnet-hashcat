@@ -26,9 +26,12 @@ available; this skill also runs independently with environment credentials.
   for secrets in chat. See [references/architecture.md](references/architecture.md).
 - Local Python 3.8+ and standard library suffice. Linux/macOS can also use the
   Bash wrapper; Windows can call `python scripts/hc.py` directly.
-- `hashcat/7.1.2-dtk` is a deployment example. Set `--module`/`--modulefiles` for the
+- `hashcat/7.1.2-dtk26.04-z100` is the R1 deployment example. Set `--module`/`--modulefiles` for the
   selected account. The module directory defaults to the resolved remote home,
   never a maintainer's personal path. Heavy work must run on compute nodes.
+- Read `references/prerequisites.md` before deployment. The selected cluster profile
+  points to a single stack profile under `stacks/`; a module name alone does not
+  establish runtime or device compatibility.
 
 ## Workflow
 

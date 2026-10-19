@@ -5,8 +5,21 @@
 记录结果仅适用于已测部署，不代表所有超算互联网集群环境。复现时将 `<region-id>` 换成有权限的目标区域。
 
 2026-10-18 在所选超算互联网集群环境验证，使用账户已部署的
-`hashcat/7.1.2-dtk` module。设备证据为 HIP、Device 66a1、每卡 16368 MB。
+`hashcat/7.1.2-dtk26.04-z100` module。设备证据为 HIP、Device 66a1、每卡 16368 MB。
 输入全部为合成测试数据，每个作业时限 3 分钟，没有使用账户哈希或外部目标数据。
+
+已验证的 R1 栈签名如下：
+
+```json
+{
+  "system": {"name": "centos7.6", "glibc": "2.17"},
+  "toolchain": {"gcc": "16.2.0", "cmake": "4.4.3"},
+  "backend": {"kind": "dcu", "runtime": "dtk", "version": "26.04", "target": "hygon-z100", "arch": "gfx906"},
+  "mpi": {"vendor": "openmpi", "version": "5.0.11"},
+  "framework": {"name": "none"},
+  "platform": {"adapter": "scnet-openapi", "region": "11250", "cluster": "keshell", "queue": "kshdnormal"}
+}
+```
 
 | 场景 | 资源 | 预期恢复 | 实际恢复 | 证据 |
 | --- | --- | --- | --- | --- |
