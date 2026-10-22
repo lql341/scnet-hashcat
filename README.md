@@ -2,7 +2,7 @@
 
 English | [中文](README_CN.md)
 
-Current release: 0.2.5
+Current release: 0.2.6
 
 Run [hashcat](https://hashcat.net/hashcat/) offline password-recovery workloads on
 [SCNet](https://www.scnet.cn) cluster environments. This application skill follows

@@ -12,6 +12,7 @@ import sys
 import tempfile
 import time
 import uuid
+from scnet_credentials import CredentialError, load_openapi_credentials
 from scnet_lite import Client, ClientError, default_region
 from scnet_version import VERSION
 
@@ -76,6 +77,12 @@ def parser():
         c = sub.add_parser(op)
         c.add_argument("--region")
         c.add_argument("--cluster", default=os.getenv("SCNET_HASHCAT_CLUSTER", "kseshell"))
+        if op == "doctor":
+            c.add_argument(
+                "--offline",
+                action="store_true",
+                help="check local credentials and profile without authenticating",
+            )
         if op in ("status", "collect", "cancel"):
             c.add_argument("job_id")
         if op == "collect":
@@ -336,8 +343,89 @@ def collect(client, job_id, region, out, cover=False):
     return 0 if report["ok"] else 1
 
 
+def offline_doctor(args):
+    env_keys = (
+        "SCNET_OPENAPI_USER",
+        "SCNET_OPENAPI_ACCESS_KEY",
+        "SCNET_OPENAPI_SECRET_KEY",
+    )
+    present = [key for key in env_keys if os.environ.get(key)]
+    credentials = {
+        "present": len(present) == len(env_keys),
+        "source": "environment" if len(present) == len(env_keys) else "missing",
+        "env_keys_present": present,
+        "store_error": None,
+    }
+    if not credentials["present"]:
+        try:
+            stored, _ = load_openapi_credentials()
+        except CredentialError as exc:
+            credentials["store_error"] = str(exc)
+            stored = None
+        if stored:
+            credentials["present"] = True
+            credentials["source"] = "shared_store"
+    profile_error = None
+    values = {}
+    try:
+        values = profile(args.cluster)
+    except ClientError as exc:
+        profile_error = str(exc)
+    region = (
+        args.region
+        or values.get("OPENAPI_REGION_ID")
+        or os.environ.get("SCNET_HASHCAT_REGION")
+        or os.environ.get("SCNET_OPENAPI_REGION_ID")
+        or default_region()
+    )
+    queue = values.get("PARTITION")
+    module = values.get("HASHCAT_MODULE")
+    configuration = {
+        "profile": args.cluster,
+        "profile_error": profile_error,
+        "region": region,
+        "queue": queue,
+        "module": module,
+        "ready": bool(region and queue and not profile_error),
+    }
+    blocker = None
+    if not credentials["present"]:
+        blocker = "credentials"
+        next_steps = [
+            "configure OPENAPI credentials in your own terminal, or use the shared scnet-hpc credential store"
+        ]
+    elif not configuration["ready"]:
+        blocker = "configuration"
+        next_steps = [
+            "select a valid cluster profile with region and queue, or pass --region"
+        ]
+    else:
+        next_steps = [
+            "local prerequisites are ready; run `hc.py doctor` (online) to verify the remote account"
+        ]
+    return {
+        "schema_version": 1,
+        "ok": bool(credentials["present"] and configuration["ready"]),
+        "credentials": credentials,
+        "configuration": configuration,
+        "readiness": {
+            "credentials": "ready" if credentials["present"] else "missing",
+            "configuration": "ready" if configuration["ready"] else "incomplete",
+            "remote": "unknown",
+        },
+        "openapi_ready": bool(credentials["present"] and configuration["ready"]),
+        "primary_blocker": blocker,
+        "next_steps": next_steps,
+        "first_use": "references/first-use.md",
+    }
+
+
 def main(argv=None):
     args = parser().parse_args(argv)
+    if args.op == "doctor" and getattr(args, "offline", False):
+        status = offline_doctor(args)
+        emit(status)
+        return 0 if status["ok"] else 1
     client = Client()
     try:
         if args.op == "version":

@@ -39,11 +39,14 @@ write them into `config.json` or a cluster profile.
 ## 3. Local check
 
 ```bash
+python3 scripts/hc.py doctor --offline
 python3 scripts/hc.py doctor --region "<region-id>"
 python3 scripts/hc.py crack --hashes hashes.txt --dict dict.txt --dry-run
 ```
 
-`doctor` is the first authenticated check and emits a machine-readable failure
+`doctor --offline` is a non-secret local check: credentials, profile, region,
+queue and module. It reports `readiness.remote=unknown`; only the online
+`doctor` verifies the account. `doctor` also emits a machine-readable failure
 with `first_use` and `next` fields. `--dry-run` plans locally without uploading
 or submitting. If `doctor` reports missing credentials, region or queue, follow
 its message and this document; do not retry submission blindly.

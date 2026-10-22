@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.6 (2026-10-22)
+
+- Add `doctor --offline` with an explicit credentials/configuration/remote
+  readiness split; online doctor remains available.
+- Test missing-credential and profile-ready branches without network or secrets.
+- Document the offline-first first-use sequence.
+
 ## 0.2.5 (2026-10-21)
 
 - Make doctor failures machine-readable with first-use and next-step fields.

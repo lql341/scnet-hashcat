@@ -144,6 +144,27 @@ class DriverTests(unittest.TestCase):
                 hc.crack(client, self.args("--wait"))
             collector.assert_not_called()
 
+    def test_offline_doctor_is_not_a_false_ready(self):
+        args = hc.parser().parse_args(["doctor", "--offline", "--cluster", "kseshell"])
+        with patch.dict(os.environ, {}, clear=True), patch.object(
+            hc, "load_openapi_credentials", return_value=(None, None)
+        ):
+            status = hc.offline_doctor(args)
+        self.assertFalse(status["openapi_ready"])
+        self.assertEqual(status["primary_blocker"], "credentials")
+        self.assertEqual(status["readiness"]["remote"], "unknown")
+
+    def test_offline_doctor_profile_and_credentials(self):
+        args = hc.parser().parse_args(["doctor", "--offline", "--cluster", "kseshell"])
+        credentials = {"user": "u", "access_key": "a", "secret_key": "s"}
+        with patch.dict(os.environ, {}, clear=True), patch.object(
+            hc, "load_openapi_credentials", return_value=(credentials, "test")
+        ):
+            status = hc.offline_doctor(args)
+        self.assertTrue(status["openapi_ready"])
+        self.assertEqual(status["configuration"]["queue"], "kshdnormal")
+        self.assertNotIn("secret", json.dumps(status).lower())
+
     def test_empty_control_and_pkzip_inputs_rejected(self):
         spec = importlib.util.spec_from_file_location("precheck", ROOT / "scripts/remote/hc-precheck.py")
         module = importlib.util.module_from_spec(spec)
