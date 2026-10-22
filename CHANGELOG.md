@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.5 (2026-10-21)
+
+- Make doctor failures machine-readable with first-use and next-step fields.
+- Keep the interactive first-use guidance aligned with the scnet-app contract.
+
 ## 0.2.4 (2026-10-21)
 
 - Add a first-use reference for account/resource activation, credentials,

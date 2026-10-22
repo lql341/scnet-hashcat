@@ -370,13 +370,21 @@ def main(argv=None):
                 return collect(client, args.job_id, region, args.out or Path("hc-out-" + args.job_id), args.cover)
         return 0
     except (ClientError, OSError, ValueError, KeyError) as exc:
-        print("hc: error: " + str(exc), file=sys.stderr)
         if args.op == "doctor":
-            print(
-                "hc: first use: see references/first-use.md; check account/resource "
-                "activation, credentials, region/queue and module deployment separately",
-                file=sys.stderr,
+            emit(
+                {
+                    "ok": False,
+                    "error": str(exc),
+                    "first_use": "references/first-use.md",
+                    "next": [
+                        "confirm the SCNet account has the target region/queue activated",
+                        "configure credentials in your own terminal or via the shared credential store",
+                        "select a region/queue and confirm the hashcat module is deployed",
+                    ],
+                }
             )
+        else:
+            print("hc: error: " + str(exc), file=sys.stderr)
         return 1
 
 

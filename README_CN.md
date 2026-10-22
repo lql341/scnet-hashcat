@@ -2,7 +2,7 @@
 
 [English](README.md) | 中文
 
-当前版本：0.2.4
+当前版本：0.2.5
 
 在[超算互联网（SCNet）](https://www.scnet.cn)集群环境运行 [hashcat](https://hashcat.net/hashcat/)
 离线密码恢复任务。应用 skill 与 [scnet-hpc](https://github.com/lql341/scnet-hpc)
