@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.4 (2026-10-21)
+
+- Add a first-use reference for account/resource activation, credentials,
+  shared credential store and module readiness.
+- Link the first-use path from SKILL.md and README, and point doctor failures to
+  the actionable first-use checklist.
+
 ## 0.2.3 (2026-10-21)
 
 - Record the derived adapter checksum and verify it in the vendor-manifest test.

@@ -371,6 +371,12 @@ def main(argv=None):
         return 0
     except (ClientError, OSError, ValueError, KeyError) as exc:
         print("hc: error: " + str(exc), file=sys.stderr)
+        if args.op == "doctor":
+            print(
+                "hc: first use: see references/first-use.md; check account/resource "
+                "activation, credentials, region/queue and module deployment separately",
+                file=sys.stderr,
+            )
         return 1
 
 

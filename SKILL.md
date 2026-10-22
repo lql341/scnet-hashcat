@@ -13,6 +13,8 @@ a second skill for normal runs.
 
 ## First use and selection
 
+- First use: read [references/first-use.md](references/first-use.md) for account
+  activation, AK/SK, shared credential store and module prerequisites.
 - Installation requests: read [references/installation.md](references/installation.md)
   or [references/installation_CN.md](references/installation_CN.md); distinguish local
   skill installation, credential setup, and remote module deployment.

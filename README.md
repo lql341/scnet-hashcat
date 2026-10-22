@@ -2,7 +2,7 @@
 
 English | [中文](README_CN.md)
 
-Current release: 0.2.3
+Current release: 0.2.4
 
 Run [hashcat](https://hashcat.net/hashcat/) offline password-recovery workloads on
 [SCNet](https://www.scnet.cn) cluster environments. This application skill follows
@@ -26,6 +26,12 @@ remote hashcat binary. No SCNet credentials, local GPU or local hashcat installa
 are needed to install or produce an offline plan. Codex installer commands for
 Linux/macOS and Windows, manual installation for other agents, verification and
 update behavior are in [installation](references/installation.md).
+
+## First use
+
+Read [references/first-use.md](references/first-use.md) before configuring a new
+SCNet account. `python3 scripts/hc.py doctor --region "<region-id>"` is the first
+authenticated check; `crack --dry-run` works without credentials.
 
 ## Prerequisites
 

@@ -2,7 +2,7 @@
 
 [English](README.md) | 中文
 
-当前版本：0.2.3
+当前版本：0.2.4
 
 在[超算互联网（SCNet）](https://www.scnet.cn)集群环境运行 [hashcat](https://hashcat.net/hashcat/)
 离线密码恢复任务。应用 skill 与 [scnet-hpc](https://github.com/lql341/scnet-hpc)
@@ -22,6 +22,12 @@
 安装和离线规划无需 SCNet 凭证、本地 GPU 或本地 hashcat。
 Linux/macOS、Windows 的官方安装器命令、其他 agent 的手动安装、校验和更新方式见
 [安装教程](references/installation_CN.md)。
+
+## 首次使用
+
+在新 SCNet 账户上配置前先读 [references/first-use.md](references/first-use.md)。
+`python3 scripts/hc.py doctor --region "<region-id>"` 是第一次需要认证的检查；
+`crack --dry-run` 不需要凭证。
 
 ## 前置条件
 
