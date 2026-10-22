@@ -17,7 +17,8 @@
   "derivatives": {
     "scripts/scnet_lite.py": {
       "modified": true,
-      "note": "Focused adapter; sync auth, accounting and transfer contracts explicitly. Originally derived in scnet-hashcat d4ac2be50b49221ff4c9f006610d76dfd1d1c465."
+      "note": "Focused adapter; sync auth, accounting and transfer contracts explicitly. Originally derived in scnet-hashcat d4ac2be50b49221ff4c9f006610d76dfd1d1c465.",
+      "sha256": "82419396a08ec3cfbdebc195638582da3d33638872aacbc829f57b67f3351729"
     }
   }
 }

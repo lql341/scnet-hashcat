@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.3 (2026-10-21)
+
+- Record the derived adapter checksum and verify it in the vendor-manifest test.
+- Check the expected Client method surface for the embedded adapter.
+- Make the single-skill entry explicit in the Chinese README.
+
 ## 0.2.2 (2026-10-21)
 
 - State the single-skill entry model explicitly: users install/load only

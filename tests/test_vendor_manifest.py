@@ -30,12 +30,19 @@ class VendorManifestTests(unittest.TestCase):
         for relative, meta in data["derivatives"].items():
             self.assertTrue((ROOT / relative).is_file(), relative)
             self.assertTrue(meta["modified"], relative)
+            self.assertEqual(
+                hashlib.sha256((ROOT / relative).read_bytes()).hexdigest(),
+                meta["sha256"],
+                relative,
+            )
 
-    def test_adapter_is_local_and_uses_shared_credential_contract(self):
+    def test_adapter_is_local_and_exposes_expected_surface(self):
         text = (ROOT / "scripts" / "scnet_lite.py").read_text(encoding="utf-8")
         self.assertNotIn("import scnet_hpc", text)
         self.assertIn("load_openapi_credentials", text)
         self.assertIn("scnet-hpc-openapi", (ROOT / "scripts" / "scnet_credentials.py").read_text(encoding="utf-8"))
+        for method in ("regions", "mkdir", "upload", "submit", "wait", "job", "logs", "download"):
+            self.assertIn("def " + method + "(", text)
 
 
 if __name__ == "__main__":
