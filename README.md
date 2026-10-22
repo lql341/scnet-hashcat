@@ -2,7 +2,7 @@
 
 English | [中文](README_CN.md)
 
-Current release: 0.2.1
+Current release: 0.2.2
 
 Run [hashcat](https://hashcat.net/hashcat/) offline password-recovery workloads on
 [SCNet](https://www.scnet.cn) cluster environments. This application skill follows
@@ -38,8 +38,9 @@ update behavior are in [installation](references/installation.md).
 
 Local Linux/macOS can also use `scripts/hc`; Windows can call `python scripts/hc.py`
 without Bash/WSL. Remote Python 3 and compute-node Internet access are not required.
-`scnet-hpc` is recommended for first-time credential setup or software deployment,
-but is not a runtime dependency when credentials and the module already exist.
+This is the single skill users install/load; `scnet-hpc` is recommended only for
+first-time credential setup, SSH or software deployment, and is not a runtime
+dependency when credentials and the module already exist.
 AK/SK does not activate region resources by itself. See the
 [first-run walkthrough](references/quickstart.md) for where to obtain credentials,
 module readiness, exact commands and troubleshooting.

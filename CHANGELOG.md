@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.2 (2026-10-21)
+
+- State the single-skill entry model explicitly: users install/load only
+  scnet-hashcat; scnet-hpc is optional for setup, SSH and deployment.
+- Add vendor-manifest integrity tests for the embedded OpenAPI adapter.
+- Align the architecture reference with the single-skill embedded-adapter pattern.
+
 ## 0.2.1 (2026-10-19)
 
 - Align the R1 cluster profile and operational documentation with the

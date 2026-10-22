@@ -5,10 +5,11 @@ description: Run authorized offline hashcat password-recovery jobs on SCNet HPC 
 
 # SCNet hashcat
 
-Use this application skill for hashcat workloads on SCNet. Prefer OpenAPI for
-resource discovery, file transfer, submission and status. Use scnet-hpc for
-first-use setup, SSH, software deployment and broader cluster diagnosis when
-available; this skill also runs independently with environment credentials.
+Use this application skill for hashcat workloads on SCNet. This is the single
+skill users need to load: it runs OpenAPI workloads independently through its
+embedded adapter. Use `scnet-hpc` for first-use setup, SSH, software deployment
+and broader cluster diagnosis when available; do not require users to load it as
+a second skill for normal runs.
 
 ## First use and selection
 
